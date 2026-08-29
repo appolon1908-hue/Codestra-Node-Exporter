@@ -111,8 +111,12 @@ jobs:
           sudo cp /tmp/node-exporter-pki/server.crt /run/secrets/node_exporter_server_cert
           sudo cp /tmp/node-exporter-pki/server.key /run/secrets/node_exporter_server_key
           sudo cp /tmp/node-exporter-pki/ca.crt /run/secrets/prometheus_client_ca
-          sudo chmod 0400 /run/secrets/node_exporter_server_key
-          sudo chmod 0444 /run/secrets/node_exporter_server_cert /run/secrets/prometheus_client_ca
+          sudo chown "$(id -u):$(id -g)" \
+            /run/secrets/node_exporter_server_cert \
+            /run/secrets/node_exporter_server_key \
+            /run/secrets/prometheus_client_ca
+          chmod 0400 /run/secrets/node_exporter_server_key
+          chmod 0444 /run/secrets/node_exporter_server_cert /run/secrets/prometheus_client_ca
           cp codestra/textfile/example.prom /tmp/codestra-node-exporter/textfile/codestra-example.prom
 
       - name: Derive exact source-compatible command from Compose
