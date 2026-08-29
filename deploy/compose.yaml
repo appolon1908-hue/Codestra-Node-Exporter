@@ -1,0 +1,25 @@
+name: codestra-node-exporter
+
+services:
+  node-exporter:
+    image: ${NODE_EXPORTER_IMAGE:?NODE_EXPORTER_IMAGE must be an immutable image reference containing @sha256:}
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 15s
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=${NODE_EXPORTER_LISTEN_IP:?NODE_EXPORTER_LISTEN_IP must be a private host address}:${NODE_EXPORTER_PORT:-9100}
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
+    volumes:
+      - /:/host:ro,rslave
+      - ${NODE_EXPORTER_TEXTFILE_DIRECTORY:-/var/lib/node_exporter/textfile_collector}:/var/lib/node_exporter/textfile_collector:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
