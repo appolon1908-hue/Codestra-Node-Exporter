@@ -15,7 +15,6 @@ services:
       - --path.rootfs=/host/root
       - --path.udev.data=/host/root/run/udev/data
       - --collector.disable-defaults
-      - --collector.boottime
       - --collector.cpu
       - --collector.cpufreq
       - --collector.diskstats
