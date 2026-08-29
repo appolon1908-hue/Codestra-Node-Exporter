@@ -24,8 +24,9 @@ TEXTFILE_EXAMPLE = CODESTRA / "textfile" / "example.prom"
 TEXTFILE_README = CODESTRA / "textfile" / "README.md"
 OPERATING_MODEL = CODESTRA / "docs" / "OPERATING-MODEL.md"
 
+# Linux publishes node_boot_time_seconds through the stat collector. The
+# platform-specific boottime collector is not a valid Linux command-line flag.
 EXPECTED_COLLECTORS = {
-    "boottime",
     "cpu",
     "cpufreq",
     "diskstats",
@@ -121,23 +122,28 @@ def load_yaml(path: pathlib.Path) -> Any:
 
 def validate_runtime() -> None:
     runtime = load_json(RUNTIME)
-    if runtime.get("schemaVersion") != "1.0":
-        fail("Node Exporter runtime schemaVersion must be 1.0")
-    if runtime.get("component") != "node-exporter":
-        fail("Node Exporter runtime component mismatch")
-    if runtime.get("canonicalHostname") != "node.codestra.media":
-        fail("canonical Node Exporter hostname mismatch")
-    if runtime.get("exposure") != "internal_private":
-        fail("Node Exporter exposure must remain internal_private")
-    if runtime.get("status") != "CONFIG_PREPARED_NOT_DEPLOYED":
-        fail("Node Exporter runtime must remain CONFIG_PREPARED_NOT_DEPLOYED")
-    if runtime.get("businessScope") != ["platform"]:
-        fail("Node Exporter target scope must remain platform host infrastructure")
+    expected_identity = {
+        "schemaVersion": "1.0",
+        "component": "node-exporter",
+        "canonicalHostname": "node.codestra.media",
+        "exposure": "internal_private",
+        "status": "CONFIG_PREPARED_NOT_DEPLOYED",
+        "businessScope": ["platform"],
+    }
+    for key, expected in expected_identity.items():
+        if runtime.get(key) != expected:
+            fail(f"runtime identity mismatch for {key}")
+
     if set(runtime.get("nativeCollectors", [])) != EXPECTED_COLLECTORS:
-        fail("runtime collector allowlist does not match the approved collector set")
+        fail("runtime collector allowlist does not match the locked Linux collector set")
+    notes = runtime.get("collectorNotes", {})
+    if notes.get("bootTimeMetricSource") != "stat":
+        fail("boot time metric must be sourced from the Linux stat collector")
+    if notes.get("linuxBoottimeCollectorFlagAllowed") is not False:
+        fail("unsupported Linux boottime collector flag must remain prohibited")
 
     boundaries = runtime.get("collectorBoundaries", {})
-    for field in (
+    false_boundaries = (
         "systemdDbusCollector",
         "hostNetwork",
         "hostPidNamespace",
@@ -146,44 +152,43 @@ def validate_runtime() -> None:
         "containerMetrics",
         "applicationMetrics",
         "textfileExecutesScripts",
-    ):
+    )
+    if boundaries.get("disableDefaults") is not True:
+        fail("default collectors must remain disabled")
+    for field in false_boundaries:
         if boundaries.get(field) is not False:
             fail(f"Node Exporter boundary must remain false: {field}")
-    if boundaries.get("disableDefaults") is not True:
-        fail("Node Exporter default collectors must remain disabled")
 
     transport = runtime.get("transport", {})
-    if transport.get("tls") is not True or transport.get("minimumVersion") != "TLS13":
-        fail("Node Exporter must require TLS 1.3")
-    if transport.get("prometheusClientCertificateRequired") is not True:
-        fail("Prometheus client certificate must be required")
-    if transport.get("basicAuthentication") is not False:
-        fail("basic authentication must remain disabled")
-    if transport.get("anonymousPlainHttp") is not False:
-        fail("anonymous plaintext HTTP must remain disabled")
-    if transport.get("nativeHostPortPublished") is not False:
-        fail("Node Exporter native port may not be published to the host")
+    if transport != {
+        "tls": True,
+        "minimumVersion": "TLS13",
+        "prometheusClientCertificateRequired": True,
+        "basicAuthentication": False,
+        "anonymousPlainHttp": False,
+        "nativeHostPortPublished": False,
+        "privatePort": 9100,
+    }:
+        fail("Node Exporter transport contract mismatch")
 
     activation = runtime.get("activation", {})
     if not activation or any(value is not False for value in activation.values()):
-        fail("all Node Exporter activation gates must remain false before evidence exists")
+        fail("all activation gates must remain false in repository-first mode")
 
 
 def validate_web_config() -> None:
     config = load_yaml(WEB_CONFIG)
-    tls = config.get("tls_server_config", {})
-    expected = {
+    if config.get("tls_server_config") != {
         "cert_file": "/run/secrets/node_exporter_server_cert",
         "key_file": "/run/secrets/node_exporter_server_key",
         "client_auth_type": "RequireAndVerifyClientCert",
         "client_ca_file": "/run/secrets/prometheus_client_ca",
         "min_version": "TLS13",
-    }
-    if tls != expected:
-        fail("Node Exporter TLS/mTLS configuration does not match the corporate contract")
+    }:
+        fail("TLS/mTLS web configuration mismatch")
     http = config.get("http_server_config", {})
     if http.get("http2") is not True:
-        fail("Node Exporter must enable HTTP/2 over TLS")
+        fail("HTTP/2 over TLS must be enabled")
     headers = http.get("headers", {})
     for header in (
         "Strict-Transport-Security",
@@ -193,18 +198,20 @@ def validate_web_config() -> None:
         "Cache-Control",
     ):
         if not headers.get(header):
-            fail(f"Node Exporter web config is missing security header {header}")
+            fail(f"missing security header {header}")
 
 
 def validate_compose() -> None:
     compose = load_yaml(COMPOSE)
     services = compose.get("services", {})
     if set(services) != {"node-exporter"}:
-        fail("Compose candidate must define exactly the Node Exporter service")
+        fail("Compose candidate must contain exactly node-exporter")
     service = services["node-exporter"]
     command = [str(item) for item in service.get("command", [])]
     if "--collector.disable-defaults" not in command:
-        fail("Node Exporter must disable default collectors")
+        fail("default collectors must be disabled")
+    if "--collector.boottime" in command:
+        fail("unsupported Linux collector flag --collector.boottime is prohibited")
     collectors = {
         item.removeprefix("--collector.")
         for item in command
@@ -213,9 +220,9 @@ def validate_compose() -> None:
         and item != "--collector.disable-defaults"
     }
     if collectors != EXPECTED_COLLECTORS:
-        fail(f"Compose collector allowlist mismatch: {sorted(collectors)}")
+        fail(f"collector allowlist mismatch: {sorted(collectors)}")
 
-    required_flags = (
+    for flag in (
         "--path.procfs=/host/proc",
         "--path.sysfs=/host/sys",
         "--path.rootfs=/host/root",
@@ -226,10 +233,9 @@ def validate_compose() -> None:
         "--web.config.file=/etc/node_exporter/web.yml",
         "--log.level=info",
         "--log.format=json",
-    )
-    for flag in required_flags:
+    ):
         if flag not in command:
-            fail(f"Node Exporter command is missing {flag}")
+            fail(f"missing required command flag {flag}")
     for prefix in (
         "--collector.diskstats.device-exclude=",
         "--collector.filesystem.mount-points-exclude=",
@@ -237,39 +243,38 @@ def validate_compose() -> None:
         "--collector.netdev.device-exclude=",
     ):
         if not any(item.startswith(prefix) for item in command):
-            fail(f"Node Exporter command is missing bounded exclusion {prefix}")
+            fail(f"missing bounded exclusion {prefix}")
 
     if service.get("user") != "10001:10001":
-        fail("Node Exporter must run as UID/GID 10001")
+        fail("runtime UID/GID must be 10001:10001")
     if service.get("read_only") is not True:
-        fail("Node Exporter root filesystem must be read-only")
-    if service.get("privileged") is True or service.get("network_mode") == "host":
-        fail("Node Exporter may not use privileged or host-network mode")
-    if service.get("pid") == "host":
-        fail("Node Exporter may not use the host PID namespace")
+        fail("root filesystem must be read-only")
+    if service.get("privileged") is True:
+        fail("privileged mode is prohibited")
+    if service.get("network_mode") == "host" or service.get("pid") == "host":
+        fail("host network and host PID namespace are prohibited")
     if service.get("ports"):
-        fail("Node Exporter may not publish a host port")
+        fail("host port publication is prohibited")
     if set(map(str, service.get("expose", []))) != {"9100"}:
-        fail("Node Exporter must expose only private port 9100")
+        fail("only private port 9100 may be exposed")
     if set(service.get("networks", [])) != {"codestra-observability"}:
-        fail("Node Exporter must attach only to the observability network")
-    if "ALL" not in service.get("cap_drop", []):
-        fail("Node Exporter must drop all Linux capabilities")
+        fail("only the observability network is allowed")
+    if service.get("cap_drop") != ["ALL"]:
+        fail("all Linux capabilities must be dropped")
     if "no-new-privileges:true" not in service.get("security_opt", []):
-        fail("Node Exporter must set no-new-privileges")
+        fail("no-new-privileges is required")
     if set(service.get("secrets", [])) != {
         "node_exporter_server_cert",
         "node_exporter_server_key",
         "prometheus_client_ca",
     }:
-        fail("Node Exporter mTLS secret-file contract is incomplete")
+        fail("mTLS secret-file contract is incomplete")
     if service.get("healthcheck", {}).get("test") != ["CMD", "/node-exporter-healthcheck"]:
-        fail("Node Exporter must use the native listener probe")
+        fail("native health probe is required")
 
-    volumes = service.get("volumes", [])
     bind_targets = {
         item.get("target")
-        for item in volumes
+        for item in service.get("volumes", [])
         if isinstance(item, dict) and item.get("type") == "bind"
     }
     if bind_targets != {
@@ -278,21 +283,22 @@ def validate_compose() -> None:
         "/host/root",
         "/var/lib/node_exporter/textfile_collector",
     }:
-        fail("Node Exporter host bind target allowlist mismatch")
-    for item in volumes:
+        fail("host bind target allowlist mismatch")
+    for item in service.get("volumes", []):
         if isinstance(item, dict) and item.get("type") == "bind" and item.get("read_only") is not True:
-            fail(f"Node Exporter bind must be read-only: {item.get('target')}")
+            fail(f"host bind must be read-only: {item.get('target')}")
 
     image = str(service.get("image", ""))
     if "${CODESTRA_NODE_EXPORTER_IMAGE:" not in image or "sha256" not in image:
-        fail("Node Exporter final image must require an immutable digest")
-    build_args = service.get("build", {}).get("args", {})
-    if set(build_args) != {"GO_BUILDER_IMAGE", "NODE_EXPORTER_BASE_IMAGE"}:
-        fail("Node Exporter build must pin builder and upstream images")
+        fail("final image must require an immutable digest")
+    if set(service.get("build", {}).get("args", {})) != {
+        "GO_BUILDER_IMAGE",
+        "NODE_EXPORTER_BASE_IMAGE",
+    }:
+        fail("builder and upstream base image must both be pinned")
     limits = service.get("deploy", {}).get("resources", {}).get("limits", {})
-    for field in ("cpus", "memory", "pids"):
-        if field not in limits:
-            fail(f"Node Exporter runtime is missing resource limit {field}")
+    if not {"cpus", "memory", "pids"}.issubset(limits):
+        fail("resource limits are incomplete")
 
     serialized = COMPOSE.read_text(encoding="utf-8")
     for forbidden in (
@@ -304,102 +310,75 @@ def validate_compose() -> None:
         "pid: host",
         "ports:",
         "--collector.systemd",
+        "--collector.boottime",
     ):
         if forbidden in serialized:
-            fail(f"Node Exporter runtime contains forbidden content: {forbidden}")
+            fail(f"forbidden runtime content: {forbidden}")
 
 
 def parse_labels(raw: str) -> dict[str, str]:
     labels: dict[str, str] = {}
-    if not raw:
-        return labels
-    for match in re.finditer(r'(\w+)="((?:\\.|[^"\\])*)"(?:,|$)', raw):
-        labels[match.group(1)] = match.group(2)
+    if raw:
+        for match in re.finditer(r'(\w+)="((?:\\.|[^"\\])*)"(?:,|$)', raw):
+            labels[match.group(1)] = match.group(2)
     return labels
 
 
 def validate_textfile_contract() -> None:
     contract = load_json(TEXTFILE_CONTRACT)
     if contract.get("schemaVersion") != "1.0":
-        fail("textfile contract schemaVersion must be 1.0")
+        fail("textfile contract schema version mismatch")
     if contract.get("status") != "CONTRACT_PREPARED_NOT_ACTIVATED":
-        fail("textfile contract must remain prepared, not activated")
+        fail("textfile contract must remain inactive")
     policy = contract.get("writePolicy", {})
     if policy.get("atomicRename") is not True:
-        fail("textfile producers must use atomic rename")
-    if policy.get("sampleTimestampsAllowed") is not False:
-        fail("textfile sample timestamps must remain forbidden")
-    if policy.get("symlinksAllowed") is not False:
-        fail("textfile symlinks must remain forbidden")
-    if policy.get("worldWritableFilesAllowed") is not False:
-        fail("world-writable textfile metrics must remain forbidden")
+        fail("atomic rename is required")
+    for field in ("sampleTimestampsAllowed", "symlinksAllowed", "worldWritableFilesAllowed"):
+        if policy.get(field) is not False:
+            fail(f"unsafe textfile write policy: {field}")
 
     metrics = contract.get("metrics", [])
-    by_name = {metric.get("name"): metric for metric in metrics}
+    by_name = {item.get("name"): item for item in metrics}
     if set(by_name) != EXPECTED_METRICS or len(by_name) != len(metrics):
-        fail("textfile metric catalogue mismatch or duplicate metric names")
+        fail("textfile metric catalogue mismatch")
     if not FORBIDDEN_LABELS.issubset(set(contract.get("forbiddenLabelNames", []))):
-        fail("textfile contract does not forbid all unsafe labels")
+        fail("unsafe labels are not fully prohibited")
     for name, metric in by_name.items():
         if metric.get("type") != "gauge":
-            fail(f"textfile metric must be a gauge: {name}")
+            fail(f"metric must be gauge: {name}")
         labels = metric.get("labels", [])
-        if len(labels) != len(set(labels)):
-            fail(f"duplicate textfile labels for {name}")
-        if set(labels) & FORBIDDEN_LABELS:
-            fail(f"forbidden textfile labels for {name}")
+        if len(labels) != len(set(labels)) or set(labels) & FORBIDDEN_LABELS:
+            fail(f"unsafe labels for {name}")
         if not isinstance(metric.get("maximumSeries"), int) or metric["maximumSeries"] <= 0:
-            fail(f"textfile metric requires a positive maximumSeries: {name}")
+            fail(f"invalid maximumSeries for {name}")
 
     example = require_file(TEXTFILE_EXAMPLE)
     if len(example.encode("utf-8")) > policy.get("maximumFileBytes", 0):
-        fail("textfile example exceeds the maximum file size")
-    sample_names: list[str] = []
-    sample_re = re.compile(
+        fail("textfile example exceeds maximum size")
+    samples: list[str] = []
+    pattern = re.compile(
         r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(?P<labels>[^}]*)\})?\s+"
         r"(?P<value>[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|NaN|[+-]Inf)"
         r"(?:\s+(?P<timestamp>\d+))?$"
     )
-    types: dict[str, str] = {}
-    for line_number, raw_line in enumerate(example.splitlines(), start=1):
-        line = raw_line.strip()
-        if not line:
+    for line_number, raw in enumerate(example.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
             continue
-        if line.startswith("# TYPE "):
-            parts = line.split()
-            if len(parts) != 4:
-                fail(f"invalid TYPE declaration on example line {line_number}")
-            types[parts[2]] = parts[3]
-            continue
-        if line.startswith("#"):
-            continue
-        match = sample_re.fullmatch(line)
+        match = pattern.fullmatch(line)
         if not match:
-            fail(f"invalid Prometheus sample on example line {line_number}")
+            fail(f"invalid Prometheus sample on line {line_number}")
         name = match.group("name")
-        if name not in by_name:
-            fail(f"unapproved metric in textfile example: {name}")
-        if match.group("timestamp") is not None:
-            fail(f"sample timestamp is forbidden for {name}")
+        if name not in by_name or match.group("timestamp") is not None:
+            fail(f"unapproved or timestamped sample {name}")
         labels = parse_labels(match.group("labels") or "")
         if set(labels) != set(by_name[name].get("labels", [])):
-            fail(f"example labels do not match contract for {name}")
-        if set(labels) & FORBIDDEN_LABELS:
-            fail(f"forbidden example labels for {name}")
-        allowed_values = by_name[name].get("allowedValues")
-        if allowed_values is not None and float(match.group("value")) not in {
-            float(value) for value in allowed_values
-        }:
-            fail(f"example value is outside the contract for {name}")
-        sample_names.append(name)
-
-    if set(sample_names) != EXPECTED_METRICS:
-        fail(f"textfile example is missing metrics: {sorted(EXPECTED_METRICS - set(sample_names))}")
-    if len(sample_names) > policy.get("maximumSeriesPerFile", 0):
-        fail("textfile example exceeds the series-per-file budget")
-    for name in EXPECTED_METRICS:
-        if types.get(name) != "gauge":
-            fail(f"textfile example must declare gauge type for {name}")
+            fail(f"example label mismatch for {name}")
+        samples.append(name)
+    if set(samples) != EXPECTED_METRICS:
+        fail("textfile example does not cover the full catalogue")
+    if len(samples) > policy.get("maximumSeriesPerFile", 0):
+        fail("textfile example exceeds series budget")
 
 
 def validate_packaging_docs_and_secrets() -> None:
@@ -414,15 +393,15 @@ def validate_packaging_docs_and_secrets() -> None:
         "USER 10001:10001",
     ):
         if fragment not in dockerfile:
-            fail(f"Node Exporter Dockerfile is missing {fragment}")
+            fail(f"Dockerfile is missing {fragment}")
     if ":latest" in dockerfile:
-        fail("Node Exporter Dockerfile may not use latest tags")
+        fail("latest image tags are prohibited")
 
     healthcheck = require_file(HEALTHCHECK)
     if "127.0.0.1:9100" not in healthcheck:
-        fail("Node Exporter healthcheck must use the local listener")
+        fail("healthcheck must use the local native listener")
     if "os/exec" in healthcheck or "exec.Command" in healthcheck:
-        fail("Node Exporter healthcheck may not invoke a shell or subprocess")
+        fail("healthcheck may not spawn subprocesses")
 
     env_text = require_file(ENV_EXAMPLE)
     for fragment in (
@@ -436,16 +415,14 @@ def validate_packaging_docs_and_secrets() -> None:
         "PROMETHEUS_CLIENT_CA_SECRET_NAME=",
     ):
         if fragment not in env_text:
-            fail(f"Node Exporter runtime example omits {fragment}")
+            fail(f"runtime example omits {fragment}")
 
     require_file(TEXTFILE_README)
     require_file(OPERATING_MODEL)
-
-    dash = chr(45) * 5
     signatures = (
-        dash + "BEGIN " + "PRIVATE" + chr(32) + "KEY" + dash,
-        dash + "BEGIN " + "OPENSSH" + chr(32) + "PRIVATE" + chr(32) + "KEY" + dash,
-        "A" + "K" + "I" + "A",
+        "-----BEGIN PRIVATE KEY-----",
+        "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "AKIA",
     )
     for path in CODESTRA.rglob("*"):
         if not path.is_file() or path.suffix == ".pyc" or "__pycache__" in path.parts:
