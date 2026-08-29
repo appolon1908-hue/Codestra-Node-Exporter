@@ -16,7 +16,6 @@
     "deployment"
   ],
   "nativeCollectors": [
-    "boottime",
     "cpu",
     "cpufreq",
     "diskstats",
@@ -43,6 +42,10 @@
     "uname",
     "vmstat"
   ],
+  "collectorNotes": {
+    "bootTimeMetricSource": "stat",
+    "linuxBoottimeCollectorFlagAllowed": false
+  },
   "collectorBoundaries": {
     "disableDefaults": true,
     "systemdDbusCollector": false,
