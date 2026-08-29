@@ -1,0 +1,190 @@
+name: Validate Codestra Node Exporter corporate configuration
+
+on:
+  pull_request:
+    paths:
+      - 'codestra/**'
+      - 'scripts/validate_codestra_node_exporter.py'
+      - '.github/workflows/validate-codestra-node-exporter.yml'
+      - 'upstream/go.mod'
+      - 'upstream/go.sum'
+  push:
+    branches: [development, test, staging, production, main]
+    paths:
+      - 'codestra/**'
+      - 'scripts/validate_codestra_node_exporter.py'
+      - '.github/workflows/validate-codestra-node-exporter.yml'
+      - 'upstream/go.mod'
+      - 'upstream/go.sum'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codestra-node-exporter-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out exact head
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install pinned policy-validator dependency
+        run: python -m pip install --disable-pip-version-check --no-cache-dir PyYAML==6.0.3
+
+      - name: Validate collectors, mTLS, textfile contract, packaging, and runtime policy
+        run: python scripts/validate_codestra_node_exporter.py
+
+      - name: Render hardened Compose candidate
+        env:
+          GO_BUILDER_IMAGE: golang:9.9@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          NODE_EXPORTER_BASE_IMAGE: prom/node-exporter:99.0.0@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          CODESTRA_NODE_EXPORTER_IMAGE: ghcr.io/appolon1908-hue/codestra-node-exporter:ci@sha256:2222222222222222222222222222222222222222222222222222222222222222
+          CODESTRA_ENVIRONMENT: test
+          CODESTRA_REGION: ci
+          CODESTRA_SERVER: github-actions
+          CODESTRA_NODE_EXPORTER_DEPLOYMENT_ID: exact-head-ci
+          NODE_EXPORTER_TEXTFILE_PATH: /tmp/codestra-node-exporter/textfile
+          CODESTRA_OBSERVABILITY_NETWORK: codestra-observability
+        run: |
+          docker compose -f codestra/deploy/compose.candidate.yaml config > /tmp/codestra-node-exporter-compose.yaml
+          test -s /tmp/codestra-node-exporter-compose.yaml
+          ! grep -Eq 'published:|host_ip:|:latest([[:space:]]|$)|privileged: true|network_mode: host|pid: host|/var/run/docker\.sock|/run/docker\.sock' /tmp/codestra-node-exporter-compose.yaml
+
+      - name: Set up Go from locked Node Exporter source
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: upstream/go.mod
+          cache-dependency-path: upstream/go.sum
+
+      - name: Format, vet, and compile native health probe
+        run: |
+          gofmt -w codestra/deploy/healthcheck.go
+          git diff --exit-code -- codestra/deploy/healthcheck.go
+          go vet codestra/deploy/healthcheck.go
+          CGO_ENABLED=0 go build -trimpath -o /tmp/node-exporter-healthcheck codestra/deploy/healthcheck.go
+
+      - name: Build Node Exporter from locked source
+        working-directory: upstream
+        run: go build -trimpath -o ../.bin/node_exporter .
+
+      - name: Generate temporary mTLS chain
+        run: |
+          mkdir -p /tmp/node-exporter-pki /tmp/codestra-node-exporter/textfile
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes \
+            -keyout /tmp/node-exporter-pki/ca.key \
+            -out /tmp/node-exporter-pki/ca.crt \
+            -subj '/CN=Codestra Node Exporter CI CA' -days 1
+          openssl req -newkey rsa:2048 -sha256 -nodes \
+            -keyout /tmp/node-exporter-pki/server.key \
+            -out /tmp/node-exporter-pki/server.csr \
+            -subj '/CN=127.0.0.1'
+          printf 'subjectAltName=IP:127.0.0.1\nextendedKeyUsage=serverAuth\n' >/tmp/node-exporter-pki/server.ext
+          openssl x509 -req -sha256 \
+            -in /tmp/node-exporter-pki/server.csr \
+            -CA /tmp/node-exporter-pki/ca.crt \
+            -CAkey /tmp/node-exporter-pki/ca.key \
+            -CAcreateserial \
+            -out /tmp/node-exporter-pki/server.crt \
+            -days 1 -extfile /tmp/node-exporter-pki/server.ext
+          openssl req -newkey rsa:2048 -sha256 -nodes \
+            -keyout /tmp/node-exporter-pki/client.key \
+            -out /tmp/node-exporter-pki/client.csr \
+            -subj '/CN=prometheus-ci'
+          printf 'extendedKeyUsage=clientAuth\n' >/tmp/node-exporter-pki/client.ext
+          openssl x509 -req -sha256 \
+            -in /tmp/node-exporter-pki/client.csr \
+            -CA /tmp/node-exporter-pki/ca.crt \
+            -CAkey /tmp/node-exporter-pki/ca.key \
+            -CAcreateserial \
+            -out /tmp/node-exporter-pki/client.crt \
+            -days 1 -extfile /tmp/node-exporter-pki/client.ext
+          sudo mkdir -p /run/secrets
+          sudo cp /tmp/node-exporter-pki/server.crt /run/secrets/node_exporter_server_cert
+          sudo cp /tmp/node-exporter-pki/server.key /run/secrets/node_exporter_server_key
+          sudo cp /tmp/node-exporter-pki/ca.crt /run/secrets/prometheus_client_ca
+          sudo chown "$(id -u):$(id -g)" \
+            /run/secrets/node_exporter_server_cert \
+            /run/secrets/node_exporter_server_key \
+            /run/secrets/prometheus_client_ca
+          chmod 0400 /run/secrets/node_exporter_server_key
+          chmod 0444 /run/secrets/node_exporter_server_cert /run/secrets/prometheus_client_ca
+          cp codestra/textfile/example.prom /tmp/codestra-node-exporter/textfile/codestra-example.prom
+
+      - name: Derive exact source-compatible command from Compose
+        run: |
+          python - <<'PY' >/tmp/node-exporter-args
+          from pathlib import Path
+          import yaml
+
+          root = Path.cwd()
+          command = yaml.safe_load(
+              Path('codestra/deploy/compose.candidate.yaml').read_text(encoding='utf-8')
+          )['services']['node-exporter']['command']
+          replacements = {
+              '--path.procfs=/host/proc': '--path.procfs=/proc',
+              '--path.sysfs=/host/sys': '--path.sysfs=/sys',
+              '--path.rootfs=/host/root': '--path.rootfs=/',
+              '--path.udev.data=/host/root/run/udev/data': '--path.udev.data=/run/udev/data',
+              '--collector.textfile.directory=/var/lib/node_exporter/textfile_collector': '--collector.textfile.directory=/tmp/codestra-node-exporter/textfile',
+              '--web.listen-address=0.0.0.0:9100': '--web.listen-address=127.0.0.1:19100',
+              '--web.config.file=/etc/node_exporter/web.yml': f'--web.config.file={root / "codestra/web-config.yml"}',
+          }
+          for argument in command:
+              print(replacements.get(str(argument), str(argument)))
+          PY
+          test -s /tmp/node-exporter-args
+
+      - name: Start locked-source candidate and prove mTLS scrape
+        run: |
+          mapfile -t NODE_EXPORTER_ARGS </tmp/node-exporter-args
+          .bin/node_exporter "${NODE_EXPORTER_ARGS[@]}" >/tmp/node-exporter.log 2>&1 &
+          NODE_EXPORTER_PID=$!
+          trap 'kill ${NODE_EXPORTER_PID} 2>/dev/null || true; cat /tmp/node-exporter.log' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              --cacert /tmp/node-exporter-pki/ca.crt \
+              --cert /tmp/node-exporter-pki/client.crt \
+              --key /tmp/node-exporter-pki/client.key \
+              https://127.0.0.1:19100/metrics >/tmp/node-exporter-metrics; then
+              break
+            fi
+            sleep 1
+          done
+          test -s /tmp/node-exporter-metrics
+          grep -q '^node_exporter_build_info' /tmp/node-exporter-metrics
+          grep -q '^node_textfile_scrape_error 0' /tmp/node-exporter-metrics
+          grep -q '^codestra_node_backup_last_success_timestamp_seconds' /tmp/node-exporter-metrics
+          grep -q '^codestra_node_restore_validation_last_success_timestamp_seconds' /tmp/node-exporter-metrics
+          grep -q '^codestra_node_certificate_not_after_timestamp_seconds' /tmp/node-exporter-metrics
+          grep -q '^codestra_node_deployment_info' /tmp/node-exporter-metrics
+          if curl --fail --silent --show-error --cacert /tmp/node-exporter-pki/ca.crt https://127.0.0.1:19100/metrics >/dev/null 2>&1; then
+            echo 'ERROR: mTLS endpoint accepted a request without a client certificate' >&2
+            exit 1
+          fi
+          if curl --fail --silent --show-error http://127.0.0.1:19100/metrics >/dev/null 2>&1; then
+            echo 'ERROR: TLS endpoint accepted plaintext HTTP' >&2
+            exit 1
+          fi
+          kill "${NODE_EXPORTER_PID}"
+          wait "${NODE_EXPORTER_PID}" || true
+          trap - EXIT
+
+      - name: Confirm source-only safety state
+        run: |
+          test "$(python -c 'import json; print(json.load(open("codestra/runtime.v1.json"))["status"])')" = "CONFIG_PREPARED_NOT_DEPLOYED"
+          test "$(python -c 'import json; print(json.load(open("codestra/textfile/metric-contract.v1.json"))["status"])')" = "CONTRACT_PREPARED_NOT_ACTIVATED"
+          python - <<'PY'
+          import json
+          runtime = json.load(open('codestra/runtime.v1.json', encoding='utf-8'))
+          assert runtime['activation']
+          assert all(value is False for value in runtime['activation'].values())
+          PY
