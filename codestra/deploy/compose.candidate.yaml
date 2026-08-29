@@ -1,0 +1,152 @@
+name: codestra-node-exporter
+
+services:
+  node-exporter:
+    build:
+      context: ../..
+      dockerfile: codestra/deploy/Dockerfile
+      args:
+        GO_BUILDER_IMAGE: ${GO_BUILDER_IMAGE:?set an immutable Go builder image including sha256 digest}
+        NODE_EXPORTER_BASE_IMAGE: ${NODE_EXPORTER_BASE_IMAGE:?set an immutable official Node Exporter image including sha256 digest}
+    image: ${CODESTRA_NODE_EXPORTER_IMAGE:?set the immutable Codestra Node Exporter image reference including sha256 digest}
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/host/root
+      - --path.udev.data=/host/root/run/udev/data
+      - --collector.disable-defaults
+      - --collector.boottime
+      - --collector.cpu
+      - --collector.cpufreq
+      - --collector.diskstats
+      - --collector.dmi
+      - --collector.entropy
+      - --collector.filefd
+      - --collector.filesystem
+      - --collector.hwmon
+      - --collector.loadavg
+      - --collector.mdadm
+      - --collector.meminfo
+      - --collector.netclass
+      - --collector.netdev
+      - --collector.netstat
+      - --collector.os
+      - --collector.pressure
+      - --collector.processes
+      - --collector.sockstat
+      - --collector.stat
+      - --collector.textfile
+      - --collector.thermal_zone
+      - --collector.time
+      - --collector.timex
+      - --collector.uname
+      - --collector.vmstat
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+      - '--collector.diskstats.device-exclude=^(ram|loop|fd|sr|dm-|md).*'
+      - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/credentials/.+|var/lib/docker/.+|var/lib/containers/.+)($|/)'
+      - '--collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$'
+      - '--collector.netdev.device-exclude=^(lo|veth.*|docker.*|br-.*|cali.*|flannel.*|cni.*)$'
+      - --web.listen-address=0.0.0.0:9100
+      - --web.telemetry-path=/metrics
+      - --web.config.file=/etc/node_exporter/web.yml
+      - --log.level=info
+      - --log.format=json
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    stop_grace_period: 45s
+    environment:
+      NODE_EXPORTER_HEALTHCHECK_ADDRESS: 127.0.0.1:9100
+    secrets:
+      - node_exporter_server_cert
+      - node_exporter_server_key
+      - prometheus_client_ca
+    expose:
+      - "9100"
+    networks:
+      - codestra-observability
+    volumes:
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
+        bind:
+          propagation: rprivate
+      - type: bind
+        source: /sys
+        target: /host/sys
+        read_only: true
+        bind:
+          propagation: rprivate
+      - type: bind
+        source: /
+        target: /host/root
+        read_only: true
+        bind:
+          propagation: rslave
+      - type: bind
+        source: ${NODE_EXPORTER_TEXTFILE_PATH:?required approved textfile metrics directory}
+        target: /var/lib/node_exporter/textfile_collector
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ulimits:
+      nofile:
+        soft: 16384
+        hard: 16384
+    healthcheck:
+      test: ["CMD", "/node-exporter-healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 25m
+        max-file: "3"
+    labels:
+      codestra.business: platform
+      codestra.application: observability
+      codestra.service: node-exporter
+      codestra.environment: ${CODESTRA_ENVIRONMENT:?required}
+      codestra.region: ${CODESTRA_REGION:?required}
+      codestra.server: ${CODESTRA_SERVER:?required canonical server name}
+      codestra.deployment: ${CODESTRA_NODE_EXPORTER_DEPLOYMENT_ID:?required immutable deployment ID}
+      codestra.telemetry.collect: "true"
+      codestra.telemetry.host-metrics-authority: "true"
+      codestra.telemetry.host-network: "false"
+      codestra.telemetry.host-pid: "false"
+      codestra.telemetry.privileged: "false"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 384M
+          pids: 128
+        reservations:
+          cpus: "0.10"
+          memory: 96M
+
+networks:
+  codestra-observability:
+    external: true
+    name: ${CODESTRA_OBSERVABILITY_NETWORK:-codestra-observability}
+
+secrets:
+  node_exporter_server_cert:
+    external: true
+    name: ${NODE_EXPORTER_SERVER_CERT_SECRET_NAME:-node-exporter-server-cert}
+  node_exporter_server_key:
+    external: true
+    name: ${NODE_EXPORTER_SERVER_KEY_SECRET_NAME:-node-exporter-server-key}
+  prometheus_client_ca:
+    external: true
+    name: ${PROMETHEUS_CLIENT_CA_SECRET_NAME:-prometheus-client-ca}
