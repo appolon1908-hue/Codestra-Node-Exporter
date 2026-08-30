@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "component": "Node Exporter",
+  "upstream_repository": "prometheus/node_exporter",
+  "upstream_clone_url": "https://github.com/prometheus/node_exporter.git",
+  "upstream_ref": "master",
+  "import_path": "upstream",
+  "deployment_enabled": false,
+  "secret_material_allowed_in_git": false
+}

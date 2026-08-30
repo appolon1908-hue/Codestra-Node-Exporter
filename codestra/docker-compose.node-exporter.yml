@@ -1,0 +1,41 @@
+services:
+  node-exporter:
+    image: "${NODE_EXPORTER_IMAGE:?set NODE_EXPORTER_IMAGE to an immutable digest}"
+    container_name: codestra-node-exporter
+    restart: unless-stopped
+    user: "65534:65534"
+    read_only: true
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($$|/)
+      - --collector.netdev.device-exclude=^(veth.*|br-.*|docker.*|cali.*|cilium.*)$$
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+      - --web.listen-address=10.40.0.1:9100
+      - --web.telemetry-path=/metrics
+    volumes:
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+        bind:
+          propagation: rslave
+      - type: bind
+        source: ${NODE_EXPORTER_TEXTFILE_DIR:-/var/lib/node_exporter/textfile_collector}
+        target: /var/lib/node_exporter/textfile_collector
+        read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget --quiet --spider
+          http://10.40.0.1:9100/metrics
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
