@@ -12,3 +12,4 @@ http_server_config:
     X-Content-Type-Options: nosniff
     X-Frame-Options: deny
     Content-Security-Policy: default-src 'none'; frame-ancestors 'none'
+    Cache-Control: no-store
