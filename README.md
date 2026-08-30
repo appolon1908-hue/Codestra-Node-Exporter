@@ -27,13 +27,15 @@ A future approved deployment procedure must run the preflight against the exact 
 ```bash
 cp codestra/deploy/runtime.env.example .env
 # Replace all placeholder image/build digests and deployment identity values.
-python3 scripts/validate_codestra_node_exporter.py
+python3 scripts/validate_codestra_node_exporter.py --env-file .env
 docker compose --env-file .env -f codestra/deploy/compose.candidate.yaml config
 ```
 
 A direct `docker compose up` that bypasses repository validation and the reviewed environment is not an approved Codestra deployment path. Any later apply remains a separate, explicitly approved deployment task.
 
 Those commands are documentation only during the repository-first phase. Before Prometheus target activation, later deployment evidence must prove private-only reachability, `node_exporter_build_info`, expected host identity, filesystem visibility, required labels, scrape success, and rollback.
+
+Automated upstream synchronization requires the repository Actions secret `CODESTRA_AUTOMATION_TOKEN`, backed by an approved GitHub App or fine-grained token with contents and pull-request permissions. The non-default token is required so generated review PRs trigger normal validation; absence of the secret fails the sync closed.
 
 ## Promotion and safety
 
