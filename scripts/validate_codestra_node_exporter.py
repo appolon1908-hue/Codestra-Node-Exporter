@@ -294,8 +294,14 @@ def validate_compose() -> None:
             fail(f"host bind must be read-only: {item.get('target')}")
 
     image = str(service.get("image", ""))
-    if "${CODESTRA_NODE_EXPORTER_IMAGE:" not in image or "sha256" not in image:
-        fail("final image must require an immutable digest")
+    expected_image = (
+        "${CODESTRA_NODE_EXPORTER_IMAGE_REPOSITORY:?set a repository-only "
+        "Codestra Node Exporter image name}@sha256:"
+        "${CODESTRA_NODE_EXPORTER_IMAGE_DIGEST:?set exactly 64 lowercase "
+        "hexadecimal digest characters}"
+    )
+    if image != expected_image:
+        fail("final image must be structurally assembled as repository@sha256:digest")
     if set(service.get("build", {}).get("args", {})) != {
         "GO_BUILDER_IMAGE",
         "NODE_EXPORTER_BASE_IMAGE",
@@ -413,7 +419,8 @@ def validate_packaging_docs_and_secrets() -> None:
         "CODESTRA_NODE_EXPORTER_DEPLOYMENT_ID=",
         "GO_BUILDER_IMAGE=",
         "NODE_EXPORTER_BASE_IMAGE=",
-        "CODESTRA_NODE_EXPORTER_IMAGE=",
+        "CODESTRA_NODE_EXPORTER_IMAGE_REPOSITORY=",
+        "CODESTRA_NODE_EXPORTER_IMAGE_DIGEST=",
         "NODE_EXPORTER_TEXTFILE_PATH=",
         "NODE_EXPORTER_SERVER_CERT_SECRET_NAME=",
         "NODE_EXPORTER_SERVER_KEY_SECRET_NAME=",

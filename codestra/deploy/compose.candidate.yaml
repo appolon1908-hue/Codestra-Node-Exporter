@@ -8,7 +8,7 @@ services:
       args:
         GO_BUILDER_IMAGE: ${GO_BUILDER_IMAGE:?set an immutable Go builder image including sha256 digest}
         NODE_EXPORTER_BASE_IMAGE: ${NODE_EXPORTER_BASE_IMAGE:?set an immutable official Node Exporter image including sha256 digest}
-    image: ${CODESTRA_NODE_EXPORTER_IMAGE:?set the immutable Codestra Node Exporter image reference including sha256 digest}
+    image: ${CODESTRA_NODE_EXPORTER_IMAGE_REPOSITORY:?set a repository-only Codestra Node Exporter image name}@sha256:${CODESTRA_NODE_EXPORTER_IMAGE_DIGEST:?set exactly 64 lowercase hexadecimal digest characters}
     command:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
