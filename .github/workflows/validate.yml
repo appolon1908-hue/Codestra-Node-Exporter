@@ -2,33 +2,59 @@ name: Validate Node Exporter authority
 
 on:
   pull_request:
+    paths:
+      - 'deploy/**'
+      - 'scripts/validate_runtime_environment.py'
+      - '.env.example'
+      - 'README.md'
+      - '.github/workflows/validate.yml'
   push:
     branches: [development, test, staging, production, main]
+    paths:
+      - 'deploy/**'
+      - 'scripts/validate_runtime_environment.py'
+      - '.env.example'
+      - 'README.md'
+      - '.github/workflows/validate.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: node-exporter-authority-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      NODE_EXPORTER_IMAGE_REPOSITORY: quay.io/prometheus/node-exporter
+      NODE_EXPORTER_IMAGE_DIGEST: '0000000000000000000000000000000000000000000000000000000000000000'
+      NODE_EXPORTER_LISTEN_IP: 10.40.0.1
+      NODE_EXPORTER_PORT: '9100'
+      NODE_EXPORTER_TEXTFILE_DIRECTORY: /var/lib/node_exporter/textfile_collector
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Render and inspect compose authority
+      - uses: actions/checkout@v4
+
+      - name: Validate immutable image and private listener inputs
         env:
-          NODE_EXPORTER_IMAGE: example.invalid/node-exporter@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          NODE_EXPORTER_LISTEN_IP: 10.40.0.1
-          NODE_EXPORTER_PORT: "9100"
-          NODE_EXPORTER_TEXTFILE_DIRECTORY: /var/lib/node_exporter/textfile_collector
+          PYTHONPYCACHEPREFIX: /tmp/codestra-node-exporter-pycache
+        run: |
+          python3 -m py_compile scripts/validate_runtime_environment.py
+          python3 scripts/validate_runtime_environment.py
+
+      - name: Render and inspect compose authority
         run: |
           set -euo pipefail
           docker compose -f deploy/compose.yaml config --format json > /tmp/compose.json
           python3 - <<'PY'
           import json
+          import re
           from pathlib import Path
 
           service = json.loads(Path('/tmp/compose.json').read_text())['services']['node-exporter']
-          assert '@sha256:' in service['image']
+          assert re.fullmatch(r'quay\.io/prometheus/node-exporter@sha256:[0-9a-f]{64}', service['image'])
           assert service['network_mode'] == 'host'
           assert service['pid'] == 'host'
           assert not service.get('ports')
@@ -41,8 +67,24 @@ jobs:
           volumes = service['volumes']
           assert any(item['source'] == '/' and item['target'] == '/host' and item['read_only'] for item in volumes)
           PY
-      - name: Reject mutable images and public bind examples
+
+      - name: Prove mutable images and unsafe listeners are rejected
         run: |
           set -euo pipefail
-          ! grep -RInE 'image:.*(:latest|:[[:space:]]*$)' deploy
-          ! grep -RInE 'NODE_EXPORTER_LISTEN_IP=(0\.0\.0\.0|::)' .env.example
+          ! env NODE_EXPORTER_IMAGE_REPOSITORY=quay.io/prometheus/node-exporter:latest \
+            NODE_EXPORTER_IMAGE_DIGEST="$NODE_EXPORTER_IMAGE_DIGEST" \
+            NODE_EXPORTER_LISTEN_IP="$NODE_EXPORTER_LISTEN_IP" \
+            NODE_EXPORTER_PORT="$NODE_EXPORTER_PORT" \
+            python3 scripts/validate_runtime_environment.py
+          ! env NODE_EXPORTER_IMAGE_REPOSITORY="$NODE_EXPORTER_IMAGE_REPOSITORY" \
+            NODE_EXPORTER_IMAGE_DIGEST=latest \
+            NODE_EXPORTER_LISTEN_IP="$NODE_EXPORTER_LISTEN_IP" \
+            NODE_EXPORTER_PORT="$NODE_EXPORTER_PORT" \
+            python3 scripts/validate_runtime_environment.py
+          for address in 0.0.0.0 :: 127.0.0.1 8.8.8.8 10.41.0.1; do
+            ! env NODE_EXPORTER_IMAGE_REPOSITORY="$NODE_EXPORTER_IMAGE_REPOSITORY" \
+              NODE_EXPORTER_IMAGE_DIGEST="$NODE_EXPORTER_IMAGE_DIGEST" \
+              NODE_EXPORTER_LISTEN_IP="$address" \
+              NODE_EXPORTER_PORT="$NODE_EXPORTER_PORT" \
+              python3 scripts/validate_runtime_environment.py
+          done

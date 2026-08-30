@@ -2,7 +2,7 @@ name: codestra-node-exporter
 
 services:
   node-exporter:
-    image: ${NODE_EXPORTER_IMAGE:?NODE_EXPORTER_IMAGE must be an immutable image reference containing @sha256:}
+    image: ${NODE_EXPORTER_IMAGE_REPOSITORY:?NODE_EXPORTER_IMAGE_REPOSITORY is required}@sha256:${NODE_EXPORTER_IMAGE_DIGEST:?NODE_EXPORTER_IMAGE_DIGEST must be a 64-character lowercase hexadecimal digest}
     restart: unless-stopped
     network_mode: host
     pid: host
@@ -15,7 +15,7 @@ services:
     stop_grace_period: 15s
     command:
       - --path.rootfs=/host
-      - --web.listen-address=${NODE_EXPORTER_LISTEN_IP:?NODE_EXPORTER_LISTEN_IP must be a private host address}:${NODE_EXPORTER_PORT:-9100}
+      - --web.listen-address=${NODE_EXPORTER_LISTEN_IP:?NODE_EXPORTER_LISTEN_IP must pass scripts/validate_runtime_environment.py}:${NODE_EXPORTER_PORT:-9100}
       - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
       - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
     volumes:
