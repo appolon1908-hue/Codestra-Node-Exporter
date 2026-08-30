@@ -1,0 +1,103 @@
+name: Validate Codestra Node Exporter runtime v1
+
+on:
+  pull_request:
+    paths:
+      - "codestra/runtime-v1/**"
+      - ".github/workflows/validate-codestra-runtime-v1.yml"
+  push:
+    branches:
+      - development
+      - test
+      - staging
+      - production
+      - main
+    paths:
+      - "codestra/runtime-v1/**"
+      - ".github/workflows/validate-codestra-runtime-v1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned YAML parser
+        run: python -m pip install --disable-pip-version-check PyYAML==6.0.2
+      - name: Validate shell syntax
+        run: bash -n codestra/runtime-v1/render_codestra_textfile_metrics.sh
+      - name: Exercise the textfile renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          status_dir="$(mktemp -d)"
+          output_dir="$(mktemp -d)"
+          now="$(date +%s)"
+          printf '%s\n' "$now" > "$status_dir/backup-database.last_success"
+          printf '%s\n' "$now" > "$status_dir/backup-object-storage.last_success"
+          printf '%s\n' "$now" > "$status_dir/backup-configuration.last_success"
+          printf '%s\n' "$now" > "$status_dir/restore-validation.last_success"
+          printf '%s\n' "$((now + 2592000))" > "$status_dir/certificate-edge.expiry"
+          printf '%s\n' "$((now + 2592000))" > "$status_dir/certificate-internal-pki.expiry"
+          printf '0\n' > "$status_dir/configuration-drift.state"
+          NODE_TEXTFILE_DIR="$output_dir" \
+          CODESTRA_STATUS_DIR="$status_dir" \
+          CODESTRA_BUSINESS="platform" \
+          CODESTRA_APPLICATION="shared-platform" \
+          CODESTRA_SERVICE="host" \
+          CODESTRA_ENVIRONMENT="test" \
+          CODESTRA_SERVER="ci-runner" \
+          CODESTRA_REGION="ci" \
+          CODESTRA_DEPLOYMENT="exact-head" \
+          CODESTRA_VERSION="test-sha" \
+          bash codestra/runtime-v1/render_codestra_textfile_metrics.sh
+          test -s "$output_dir/codestra_host.prom"
+          grep -q '^codestra_deployment_info{' "$output_dir/codestra_host.prom"
+          grep -q '^codestra_restore_validation_last_success_timestamp_seconds{' "$output_dir/codestra_host.prom"
+          grep -q '^codestra_configuration_drift{' "$output_dir/codestra_host.prom"
+          ! grep -Eqi 'customer_id|tenant_id|email|phone|request_id|trace_id' "$output_dir/codestra_host.prom"
+          printf '1700000000000\n' > "$status_dir/restore-validation.last_success"
+          NODE_TEXTFILE_DIR="$output_dir" \
+          CODESTRA_STATUS_DIR="$status_dir" \
+          CODESTRA_BUSINESS="platform" \
+          CODESTRA_APPLICATION="shared-platform" \
+          CODESTRA_SERVICE="host" \
+          CODESTRA_ENVIRONMENT="test" \
+          CODESTRA_SERVER="ci-runner" \
+          CODESTRA_REGION="ci" \
+          CODESTRA_DEPLOYMENT="exact-head" \
+          CODESTRA_VERSION="test-sha" \
+          bash codestra/runtime-v1/render_codestra_textfile_metrics.sh
+          ! grep -q '^codestra_restore_validation_last_success_timestamp_seconds{' "$output_dir/codestra_host.prom"
+          grep -q '^codestra_status_file_present{class="restore-validation"} 0$' "$output_dir/codestra_host.prom"
+      - name: Validate Compose and security contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import yaml
+
+          text = Path("codestra/runtime-v1/compose.yaml").read_text()
+          compose = yaml.safe_load(text)
+          service = compose["services"]["node-exporter"]
+          assert "ports" not in service
+          assert service["read_only"] is True
+          assert "ALL" in service["cap_drop"]
+          mounts = "\n".join(service["volumes"])
+          assert "/proc:/host/proc:ro" in mounts
+          assert "/sys:/host/sys:ro" in mounts
+          assert "/:/rootfs:ro,rslave" in mounts
+          assert "/run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro" in mounts
+          assert "--collector.textfile.directory=" in "\n".join(service["command"])
+          assert "latest" not in text.lower()
+          print("Codestra Node Exporter runtime validation PASS")
+      - name: Render Compose with non-secret CI values
+        env:
+          NODE_EXPORTER_IMAGE: prom/node-exporter:ci@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          NODE_TEXTFILE_DIR: /tmp/codestra-node-exporter-textfile
+        run: |
+          mkdir -p "$NODE_TEXTFILE_DIR"
+          docker compose -f codestra/runtime-v1/compose.yaml config >/tmp/codestra-node-exporter-runtime.yaml
+          test -s /tmp/codestra-node-exporter-runtime.yaml
+          ! grep -Eq ':latest([[:space:]]|$)|published:|host_ip:' /tmp/codestra-node-exporter-runtime.yaml
