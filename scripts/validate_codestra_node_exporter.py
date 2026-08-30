@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
 import re
@@ -104,6 +105,42 @@ def require_file(path: pathlib.Path) -> str:
     if not path.is_file():
         fail(f"missing required file: {path.relative_to(ROOT)}")
     return path.read_text(encoding="utf-8")
+
+
+IMAGE_REPOSITORY_RE = re.compile(
+    r"^(?:[a-z0-9.-]+(?::[0-9]+)?/)?"
+    r"[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$"
+)
+IMAGE_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def parse_env_file(path: pathlib.Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line_number, raw in enumerate(require_file(path).splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            fail(f"invalid environment assignment at {path}:{line_number}")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in values:
+            fail(f"empty or duplicate environment key at {path}:{line_number}")
+        values[key] = value.strip()
+    return values
+
+
+def validate_deployment_environment(path: pathlib.Path) -> None:
+    values = parse_env_file(path)
+    repository = values.get("CODESTRA_NODE_EXPORTER_IMAGE_REPOSITORY", "")
+    digest = values.get("CODESTRA_NODE_EXPORTER_IMAGE_DIGEST", "")
+    if not IMAGE_REPOSITORY_RE.fullmatch(repository) or "@" in repository or ":latest" in repository:
+        fail("CODESTRA_NODE_EXPORTER_IMAGE_REPOSITORY must be a repository-only reference")
+    if not IMAGE_DIGEST_RE.fullmatch(digest) or set(digest) == {"0"}:
+        fail(
+            "CODESTRA_NODE_EXPORTER_IMAGE_DIGEST must be a real, non-placeholder "
+            "64-character lowercase hexadecimal digest"
+        )
 
 
 def load_json(path: pathlib.Path) -> Any:
@@ -294,8 +331,14 @@ def validate_compose() -> None:
             fail(f"host bind must be read-only: {item.get('target')}")
 
     image = str(service.get("image", ""))
-    if "${CODESTRA_NODE_EXPORTER_IMAGE:" not in image or "sha256" not in image:
-        fail("final image must require an immutable digest")
+    expected_image = (
+        "${CODESTRA_NODE_EXPORTER_IMAGE_REPOSITORY:?set a repository-only "
+        "Codestra Node Exporter image name}@sha256:"
+        "${CODESTRA_NODE_EXPORTER_IMAGE_DIGEST:?set exactly 64 lowercase "
+        "hexadecimal digest characters}"
+    )
+    if image != expected_image:
+        fail("final image must be structurally assembled as repository@sha256:digest")
     if set(service.get("build", {}).get("args", {})) != {
         "GO_BUILDER_IMAGE",
         "NODE_EXPORTER_BASE_IMAGE",
@@ -413,7 +456,8 @@ def validate_packaging_docs_and_secrets() -> None:
         "CODESTRA_NODE_EXPORTER_DEPLOYMENT_ID=",
         "GO_BUILDER_IMAGE=",
         "NODE_EXPORTER_BASE_IMAGE=",
-        "CODESTRA_NODE_EXPORTER_IMAGE=",
+        "CODESTRA_NODE_EXPORTER_IMAGE_REPOSITORY=",
+        "CODESTRA_NODE_EXPORTER_IMAGE_DIGEST=",
         "NODE_EXPORTER_TEXTFILE_PATH=",
         "NODE_EXPORTER_SERVER_CERT_SECRET_NAME=",
         "NODE_EXPORTER_SERVER_KEY_SECRET_NAME=",
@@ -439,11 +483,16 @@ def validate_packaging_docs_and_secrets() -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env-file", type=pathlib.Path)
+    args = parser.parse_args()
     validate_runtime()
     validate_web_config()
     validate_compose()
     validate_textfile_contract()
     validate_packaging_docs_and_secrets()
+    if args.env_file is not None:
+        validate_deployment_environment(args.env_file)
     print("Codestra Node Exporter corporate configuration validation PASS")
 
 

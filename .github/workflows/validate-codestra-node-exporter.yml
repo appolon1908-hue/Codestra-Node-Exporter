@@ -41,13 +41,19 @@ jobs:
         run: python -m pip install --disable-pip-version-check --no-cache-dir PyYAML==6.0.3
 
       - name: Validate collectors, mTLS, textfile contract, packaging, and runtime policy
-        run: python scripts/validate_codestra_node_exporter.py
+        run: |
+          python scripts/validate_codestra_node_exporter.py
+          cp codestra/deploy/runtime.env.example /tmp/codestra-node-exporter.env
+          sed -i 's/CODESTRA_NODE_EXPORTER_IMAGE_DIGEST=0\{64\}/CODESTRA_NODE_EXPORTER_IMAGE_DIGEST=2222222222222222222222222222222222222222222222222222222222222222/' /tmp/codestra-node-exporter.env
+          python scripts/validate_codestra_node_exporter.py --env-file /tmp/codestra-node-exporter.env
+          ! python scripts/validate_codestra_node_exporter.py --env-file codestra/deploy/runtime.env.example
 
       - name: Render hardened Compose candidate
         env:
           GO_BUILDER_IMAGE: golang:9.9@sha256:0000000000000000000000000000000000000000000000000000000000000000
           NODE_EXPORTER_BASE_IMAGE: prom/node-exporter:99.0.0@sha256:1111111111111111111111111111111111111111111111111111111111111111
-          CODESTRA_NODE_EXPORTER_IMAGE: ghcr.io/appolon1908-hue/codestra-node-exporter:ci@sha256:2222222222222222222222222222222222222222222222222222222222222222
+          CODESTRA_NODE_EXPORTER_IMAGE_REPOSITORY: ghcr.io/appolon1908-hue/codestra-node-exporter
+          CODESTRA_NODE_EXPORTER_IMAGE_DIGEST: 2222222222222222222222222222222222222222222222222222222222222222
           CODESTRA_ENVIRONMENT: test
           CODESTRA_REGION: ci
           CODESTRA_SERVER: github-actions

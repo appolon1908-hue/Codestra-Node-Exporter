@@ -25,6 +25,7 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro,rslave
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
       - ${NODE_TEXTFILE_DIR:?set the protected host textfile directory}:/var/lib/node_exporter/textfile_collector:ro
     tmpfs:
       - /tmp:size=16m,mode=1777

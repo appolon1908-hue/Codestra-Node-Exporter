@@ -58,6 +58,20 @@ jobs:
           grep -q '^codestra_restore_validation_last_success_timestamp_seconds{' "$output_dir/codestra_host.prom"
           grep -q '^codestra_configuration_drift{' "$output_dir/codestra_host.prom"
           ! grep -Eqi 'customer_id|tenant_id|email|phone|request_id|trace_id' "$output_dir/codestra_host.prom"
+          printf '1700000000000\n' > "$status_dir/restore-validation.last_success"
+          NODE_TEXTFILE_DIR="$output_dir" \
+          CODESTRA_STATUS_DIR="$status_dir" \
+          CODESTRA_BUSINESS="platform" \
+          CODESTRA_APPLICATION="shared-platform" \
+          CODESTRA_SERVICE="host" \
+          CODESTRA_ENVIRONMENT="test" \
+          CODESTRA_SERVER="ci-runner" \
+          CODESTRA_REGION="ci" \
+          CODESTRA_DEPLOYMENT="exact-head" \
+          CODESTRA_VERSION="test-sha" \
+          bash codestra/runtime-v1/render_codestra_textfile_metrics.sh
+          ! grep -q '^codestra_restore_validation_last_success_timestamp_seconds{' "$output_dir/codestra_host.prom"
+          grep -q '^codestra_status_file_present{class="restore-validation"} 0$' "$output_dir/codestra_host.prom"
       - name: Validate Compose and security contract
         shell: python
         run: |
@@ -74,6 +88,7 @@ jobs:
           assert "/proc:/host/proc:ro" in mounts
           assert "/sys:/host/sys:ro" in mounts
           assert "/:/rootfs:ro,rslave" in mounts
+          assert "/run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro" in mounts
           assert "--collector.textfile.directory=" in "\n".join(service["command"])
           assert "latest" not in text.lower()
           print("Codestra Node Exporter runtime validation PASS")
