@@ -1,0 +1,9 @@
+{
+  "schemaVersion":"1.0",
+  "status":"HOST_SCOPE_PREPARED_NOT_DEPLOYED",
+  "domain":"codestra-marketing-platform",
+  "requiredMetrics":["cpu","memory","filesystem","disk_io","network","load"],
+  "labels":["environment","server","region","codestra_business"],
+  "forbiddenLabels":["tenant_id","customer_id","user_id","email","phone"],
+  "activation":{"runtimeApplied":false,"productionEnabled":false}
+}
