@@ -190,15 +190,20 @@ def validate_web_config() -> None:
     if http.get("http2") is not True:
         fail("HTTP/2 over TLS must be enabled")
     headers = http.get("headers", {})
+    # exporter-toolkit rejects Cache-Control in http_server_config.headers.
+    # Keep all supported browser-hardening headers mandatory and fail closed if
+    # the unsupported override is reintroduced. The endpoint remains private,
+    # mTLS-only, and carries scrape data rather than browser application data.
     for header in (
         "Strict-Transport-Security",
         "X-Content-Type-Options",
         "X-Frame-Options",
         "Content-Security-Policy",
-        "Cache-Control",
     ):
         if not headers.get(header):
             fail(f"missing security header {header}")
+    if "Cache-Control" in headers:
+        fail("exporter-toolkit does not support a configured Cache-Control header")
 
 
 def validate_compose() -> None:
