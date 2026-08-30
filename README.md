@@ -4,17 +4,9 @@ This repository is the service authority for host-level CPU, memory, filesystem,
 
 ## Runtime boundary
 
-Node Exporter runs once on each Linux host with host networking and the host PID namespace because it measures the host rather than its container. The host root is mounted read-only at `/host`; the container is otherwise read-only, drops all Linux capabilities, enables `no-new-privileges`, and exposes no Docker host-port mapping.
+Node Exporter runs once on each Linux host using read-only `/proc`, `/sys`, host-root, udev, and approved textfile mounts. The hardened authority does not use host networking or the host PID namespace. It is otherwise read-only, drops all Linux capabilities, enables `no-new-privileges`, publishes no host port, and requires Prometheus mTLS through `codestra/web-config.yml`.
 
-The runtime image is assembled from a repository-only value and an exact SHA-256 digest. The listener must be an approved IPv4 address inside `10.40.0.0/24` and remain on port 9100:
-
-| Server class | Reference private listener |
-|---|---|
-| Core | `10.40.0.1:9100` |
-| Telephony | `10.40.0.2:9100` |
-| Provider | `10.40.0.4:9100` |
-
-The mandatory preflight rejects tags, `latest`, embedded digests, malformed hashes, wildcard addresses, loopback, link-local, public addresses, and private addresses outside the approved Codestra subnet.
+The runtime image is assembled from a repository-only value and an exact SHA-256 digest. The container listener remains on port 9100 inside the private `codestra-observability` network. Tags, `latest`, embedded digests, and malformed hashes are rejected by repository validation.
 
 Port 9100 must be denied on public interfaces and allowed only from the approved Prometheus source on the private network. The existing `node.codestra.media` public DNS assignment is an ownership identifier only. It must be preserved as canonical authority metadata, but it does **not** authorize publishing, proxying, or exposing the native exporter endpoint through DNS, Caddy, Kong, or the public firewall.
 
@@ -28,20 +20,22 @@ See `codestra/enterprise-profile.v1.json` and `codestra/docs/CORPORATE-FEATURES.
 
 ## Validation
 
-Repository validation renders `deploy/compose.yaml`, proves repository-plus-digest image construction, private binding, host namespace/mount requirements, read-only runtime hardening, dropped capabilities, and the absence of public port publication.
+Repository validation renders `codestra/deploy/compose.candidate.yaml`, proves repository-plus-digest image construction, mTLS enforcement, private networking, read-only host mounts, dropped capabilities, and the absence of public port publication.
 
 A future approved deployment procedure must run the preflight against the exact environment file before any Compose command:
 
 ```bash
-cp .env.example .env
-# Set NODE_EXPORTER_IMAGE_DIGEST and the server's approved private IP.
-python3 scripts/validate_runtime_environment.py --env-file .env
-docker compose --env-file .env -f deploy/compose.yaml config
+cp codestra/deploy/runtime.env.example .env
+# Replace all placeholder image/build digests and deployment identity values.
+python3 scripts/validate_codestra_node_exporter.py --env-file .env
+docker compose --env-file .env -f codestra/deploy/compose.candidate.yaml config
 ```
 
-A direct `docker compose up` that bypasses `scripts/validate_runtime_environment.py` is not an approved Codestra deployment path. Any later apply remains a separate, explicitly approved deployment task.
+A direct `docker compose up` that bypasses repository validation and the reviewed environment is not an approved Codestra deployment path. Any later apply remains a separate, explicitly approved deployment task.
 
 Those commands are documentation only during the repository-first phase. Before Prometheus target activation, later deployment evidence must prove private-only reachability, `node_exporter_build_info`, expected host identity, filesystem visibility, required labels, scrape success, and rollback.
+
+Automated upstream synchronization requires the repository Actions secret `CODESTRA_AUTOMATION_TOKEN`, backed by an approved GitHub App or fine-grained token with contents and pull-request permissions. The non-default token is required so generated review PRs trigger normal validation; absence of the secret fails the sync closed.
 
 ## Promotion and safety
 
