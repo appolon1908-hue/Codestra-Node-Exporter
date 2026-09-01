@@ -1,9 +1,10 @@
 {
   "schema_version": "1.0",
   "component": "Node Exporter",
+  "codestra_repository": "appolon1908-hue/Codestra-Node-Exporter",
   "upstream_repository": "prometheus/node_exporter",
   "upstream_clone_url": "https://github.com/prometheus/node_exporter.git",
-  "upstream_ref": "master",
+  "upstream_ref": "9a077374d780c3cbda129a5760fb785853c79542",
   "import_path": "upstream",
   "deployment_enabled": false,
   "secret_material_allowed_in_git": false
