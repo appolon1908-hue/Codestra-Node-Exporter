@@ -84,7 +84,7 @@ jobs:
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           export GIT_AUTHOR_DATE="$UPSTREAM_TIMESTAMP"
           export GIT_COMMITTER_DATE="$UPSTREAM_TIMESTAMP"
-          SYNC_BRANCH="sync/node-exporter-upstream-${UPSTREAM_SHA}"
+          readonly SYNC_BRANCH="sync/node-exporter-upstream-${UPSTREAM_SHA}"
           git switch --create "$SYNC_BRANCH"
           git fetch --depth 1 --no-tags "$UPSTREAM_URL" "$UPSTREAM_SHA"
           git rm -r --cached --quiet --ignore-unmatch upstream

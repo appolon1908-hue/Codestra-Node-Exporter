@@ -47,6 +47,28 @@ class RepositorySecurityTests(unittest.TestCase):
         ):
             self.assertIn(token, self.sync_source)
 
+    def test_sync_rejects_quoted_and_obscured_protected_refspecs(self) -> None:
+        safe = 'git push origin "HEAD:refs/heads/${SYNC_BRANCH}"'
+        for command in (
+            'git push origin "HEAD:refs/heads/main"',
+            '(git push origin HEAD:refs/heads/staging)',
+            '/usr/bin/git -c protocol.version=2 push origin HEAD:refs/heads/production>/dev/null',
+        ):
+            with self.subTest(command=command):
+                unsafe = self.sync_source.replace(safe, command)
+                with self.assertRaisesRegex(
+                    ValueError, "protected_branch_sync_forbidden"
+                ):
+                    VALIDATOR.validate_sync(unsafe, yaml.safe_load(unsafe))
+
+    def test_sync_branch_destination_is_immutable(self) -> None:
+        assignment = 'readonly SYNC_BRANCH="sync/node-exporter-upstream-${UPSTREAM_SHA}"'
+        reassigned = self.sync_source.replace(
+            assignment, assignment + "\n          SYNC_BRANCH=main"
+        )
+        with self.assertRaisesRegex(ValueError, "sync_branch_authority_invalid"):
+            VALIDATOR.validate_sync(reassigned, yaml.safe_load(reassigned))
+
     def test_bot_created_pr_dispatches_exact_branch_validation(self) -> None:
         self.assertEqual(
             self.sync_document["permissions"],
