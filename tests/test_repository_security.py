@@ -93,6 +93,12 @@ class RepositorySecurityTests(unittest.TestCase):
             safe + '\n          G=git; "$G" push origin HEAD:refs/heads/main',
             safe + '\n          verb=push; git "$verb" origin HEAD:refs/heads/main',
             safe + '\n          suffix=; git p${suffix}ush origin HEAD:refs/heads/main',
+            safe
+            + '\n          G=/usr/bin/git; P=pu; P+=sh; { "$G" "$P" origin HEAD:refs/heads/main; }',
+            safe
+            + '\n          git -c alias.x=push x origin HEAD:refs/heads/main',
+            safe
+            + '\n          git -calias.x=push x origin HEAD:refs/heads/main',
         ):
             with self.subTest(command=command):
                 unsafe = self.sync_source.replace(safe, command)
