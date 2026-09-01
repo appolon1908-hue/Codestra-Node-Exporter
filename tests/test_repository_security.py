@@ -61,6 +61,21 @@ class RepositorySecurityTests(unittest.TestCase):
                 ):
                     VALIDATOR.validate_sync(unsafe, yaml.safe_load(unsafe))
 
+    def test_push_configuration_cannot_supply_a_protected_destination(self) -> None:
+        safe = 'git push origin "HEAD:refs/heads/${SYNC_BRANCH}"'
+        for command in (
+            "git -c remote.origin.push=HEAD:refs/heads/main push origin",
+            "git push origin 2>/dev/null HEAD:refs/heads/main",
+            "git push origin HEAD:refs/heads/{main,topic}",
+            "bash -c 'git push origin HEAD:refs/heads/main'",
+        ):
+            with self.subTest(command=command):
+                unsafe = self.sync_source.replace(safe, command)
+                with self.assertRaisesRegex(
+                    ValueError, "protected_branch_sync_forbidden:push_not_exact"
+                ):
+                    VALIDATOR.validate_sync(unsafe, yaml.safe_load(unsafe))
+
     def test_sync_branch_destination_is_immutable(self) -> None:
         assignment = 'readonly SYNC_BRANCH="sync/node-exporter-upstream-${UPSTREAM_SHA}"'
         reassigned = self.sync_source.replace(
