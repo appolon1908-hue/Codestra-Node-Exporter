@@ -87,6 +87,29 @@ class RepositorySecurityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "approved_sync_push_count_invalid"):
             VALIDATOR.validate_sync(missing, yaml.safe_load(missing))
 
+    def test_dynamic_command_words_and_subcommands_fail_closed(self) -> None:
+        safe = 'git push origin "HEAD:refs/heads/${SYNC_BRANCH}"'
+        for command in (
+            safe + '\n          G=git; "$G" push origin HEAD:refs/heads/main',
+            safe + '\n          verb=push; git "$verb" origin HEAD:refs/heads/main',
+            safe + '\n          suffix=; git p${suffix}ush origin HEAD:refs/heads/main',
+        ):
+            with self.subTest(command=command):
+                unsafe = self.sync_source.replace(safe, command)
+                with self.assertRaisesRegex(
+                    ValueError, "protected_branch_sync_forbidden"
+                ):
+                    VALIDATOR.validate_sync(unsafe, yaml.safe_load(unsafe))
+
+    def test_heredoc_body_cannot_satisfy_approved_push_count(self) -> None:
+        safe = 'git push origin "HEAD:refs/heads/${SYNC_BRANCH}"'
+        body_only = self.sync_source.replace(
+            safe,
+            "cat <<'PUSH_EVIDENCE'\n          " + safe + "\n          PUSH_EVIDENCE",
+        )
+        with self.assertRaisesRegex(ValueError, "approved_sync_push_count_invalid"):
+            VALIDATOR.validate_sync(body_only, yaml.safe_load(body_only))
+
     def test_sync_branch_destination_is_immutable(self) -> None:
         assignment = 'readonly SYNC_BRANCH="sync/node-exporter-upstream-${UPSTREAM_SHA}"'
         reassigned = self.sync_source.replace(
