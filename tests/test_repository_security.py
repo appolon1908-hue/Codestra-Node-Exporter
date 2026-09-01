@@ -99,6 +99,8 @@ class RepositorySecurityTests(unittest.TestCase):
             + '\n          git -c alias.x=push x origin HEAD:refs/heads/main',
             safe
             + '\n          git -calias.x=push x origin HEAD:refs/heads/main',
+            safe
+            + '\n          git config alias.x push; git x origin HEAD:refs/heads/main',
         ):
             with self.subTest(command=command):
                 unsafe = self.sync_source.replace(safe, command)
@@ -117,7 +119,7 @@ class RepositorySecurityTests(unittest.TestCase):
             VALIDATOR.validate_sync(body_only, yaml.safe_load(body_only))
 
     def test_sync_branch_destination_is_immutable(self) -> None:
-        assignment = 'readonly SYNC_BRANCH="sync/node-exporter-upstream-${UPSTREAM_SHA}"'
+        assignment = 'readonly SYNC_BRANCH="sync/node-exporter-upstream-${UPSTREAM_SHA}-${GITHUB_SHA}"'
         reassigned = self.sync_source.replace(
             assignment, assignment + "\n          SYNC_BRANCH=main"
         )
@@ -125,6 +127,21 @@ class RepositorySecurityTests(unittest.TestCase):
             VALIDATOR.validate_sync(reassigned, yaml.safe_load(reassigned))
 
     def test_bot_created_pr_dispatches_exact_branch_validation(self) -> None:
+        gate = "github.ref == 'refs/heads/main'"
+        self.assertIn(gate, self.sync_source)
+        unsafe_gate = self.sync_source.replace(gate, "true")
+        with self.assertRaisesRegex(ValueError, "reviewed_sync_boundary_missing"):
+            VALIDATOR.validate_sync(unsafe_gate, yaml.safe_load(unsafe_gate))
+        assignment = (
+            'readonly SYNC_BRANCH="sync/node-exporter-upstream-'
+            '${UPSTREAM_SHA}-${GITHUB_SHA}"'
+        )
+        self.assertIn(assignment, self.sync_source)
+        without_epoch = self.sync_source.replace(
+            assignment, assignment.replace("-${GITHUB_SHA}", "")
+        )
+        with self.assertRaisesRegex(ValueError, "sync_branch_authority_invalid"):
+            VALIDATOR.validate_sync(without_epoch, yaml.safe_load(without_epoch))
         self.assertEqual(
             self.sync_document["permissions"],
             {"actions": "write", "contents": "write", "pull-requests": "write"},
@@ -133,6 +150,26 @@ class RepositorySecurityTests(unittest.TestCase):
             'gh workflow run validate.yml --repo "$GITHUB_REPOSITORY" --ref "$SYNC_BRANCH"',
             self.sync_source,
         )
+
+    def test_existing_sync_pr_identity_is_exact(self) -> None:
+        for token in (
+            'gh api --method GET "repos/${GITHUB_REPOSITORY}/pulls"',
+            '-f head="${GITHUB_REPOSITORY_OWNER}:${SYNC_BRANCH}"',
+            '.head.repo.full_name',
+            '[[ "$pr_head_sha" == "$LOCAL_SHA" ]]',
+            '[[ "$pr_repository" == "$GITHUB_REPOSITORY" ]]',
+        ):
+            self.assertIn(token, self.sync_source)
+        for token in (
+            '[[ "$pr_head_sha" == "$LOCAL_SHA" ]]',
+            '[[ "$pr_repository" == "$GITHUB_REPOSITORY" ]]',
+        ):
+            with self.subTest(token=token):
+                unsafe = self.sync_source.replace(token, "true")
+                with self.assertRaisesRegex(
+                    ValueError, "reviewed_sync_boundary_missing"
+                ):
+                    VALIDATOR.validate_sync(unsafe, yaml.safe_load(unsafe))
 
     def test_vendored_tree_is_bound_to_fresh_official_commit(self) -> None:
         source = (ROOT / ".github/workflows/validate.yml").read_text()
