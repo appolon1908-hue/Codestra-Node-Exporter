@@ -1,0 +1,6 @@
+**
+!deploy/
+deploy/**
+!deploy/Dockerfile
+!deploy/healthcheck.go
+!web-config.yml
