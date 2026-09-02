@@ -35,7 +35,7 @@ jobs:
       NODE_EXPORTER_PORT: '9100'
       NODE_EXPORTER_TEXTFILE_DIRECTORY: /var/lib/node_exporter/textfile_collector
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
 
       - name: Validate immutable image and private listener inputs
         env:

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "artifactModel": "repository-built-signed-image",
+  "imageId": "node-exporter",
+  "upstreamRepository": "prometheus/node_exporter",
+  "upstreamTag": "v1.12.1",
+  "upstreamTagCommit": "6044da783597cc3b57aef7580ddcdcff58a4ee99",
+  "binaryRevisionReadback": "6044da783597cc3b57aef7580ddcdcff58a4ee99",
+  "buildFrontendImage": "docker.io/docker/dockerfile@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e",
+  "runtimeBaseImage": "docker.io/prom/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0",
+  "builderImage": "docker.io/library/golang@sha256:98e6cffc31ccc44c7c15d83df1d69891efee8115a5bb7ede2bf30a38af3e3c92",
+  "vendoredSourceSnapshotCommit": "9a077374d780c3cbda129a5760fb785853c79542",
+  "vendoredSourceUsedByImageBuild": false,
+  "productionActivation": false
+}
