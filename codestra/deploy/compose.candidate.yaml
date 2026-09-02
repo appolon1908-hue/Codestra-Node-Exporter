@@ -3,8 +3,8 @@ name: codestra-node-exporter
 services:
   node-exporter:
     build:
-      context: ../..
-      dockerfile: codestra/deploy/Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile
       args:
         GO_BUILDER_IMAGE: ${GO_BUILDER_IMAGE:?set an immutable Go builder image including sha256 digest}
         NODE_EXPORTER_BASE_IMAGE: ${NODE_EXPORTER_BASE_IMAGE:?set an immutable official Node Exporter image including sha256 digest}
