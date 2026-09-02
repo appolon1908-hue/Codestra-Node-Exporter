@@ -53,6 +53,12 @@ class RepositoryReadinessTests(unittest.TestCase):
         self.assertIn("!deploy/healthcheck.go", dockerignore)
         self.assertIn("!web-config.yml", dockerignore)
 
+    def test_vendored_upstream_is_byte_preserved(self) -> None:
+        self.assertEqual(
+            (ROOT / ".gitattributes").read_text().splitlines()[-1],
+            "upstream/** -whitespace",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
