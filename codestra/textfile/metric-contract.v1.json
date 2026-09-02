@@ -1,0 +1,138 @@
+{
+  "schemaVersion": "1.0",
+  "status": "CONTRACT_PREPARED_NOT_ACTIVATED",
+  "directory": "/var/lib/node_exporter/textfile_collector",
+  "writePolicy": {
+    "extension": ".prom",
+    "atomicRename": true,
+    "sameFilesystemTemporaryFile": true,
+    "sampleTimestampsAllowed": false,
+    "symlinksAllowed": false,
+    "worldWritableFilesAllowed": false,
+    "maximumFileBytes": 262144,
+    "maximumSeriesPerFile": 200
+  },
+  "forbiddenLabelNames": [
+    "tenant_id",
+    "customer_id",
+    "account_id",
+    "user_id",
+    "email",
+    "phone",
+    "request_id",
+    "correlation_id",
+    "trace_id",
+    "span_id",
+    "message_id",
+    "order_id",
+    "path",
+    "filename",
+    "url",
+    "query",
+    "checksum",
+    "token",
+    "secret",
+    "container_id",
+    "process_pid"
+  ],
+  "metrics": [
+    {
+      "name": "codestra_node_backup_last_success_timestamp_seconds",
+      "type": "gauge",
+      "labels": ["backup_scope"],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_backup_last_attempt_timestamp_seconds",
+      "type": "gauge",
+      "labels": ["backup_scope"],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_backup_last_attempt_success",
+      "type": "gauge",
+      "labels": ["backup_scope"],
+      "allowedValues": [0, 1],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_backup_repository_reachable",
+      "type": "gauge",
+      "labels": ["backup_scope"],
+      "allowedValues": [0, 1],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_restore_validation_last_success_timestamp_seconds",
+      "type": "gauge",
+      "labels": ["restore_scope"],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_restore_validation_last_attempt_success",
+      "type": "gauge",
+      "labels": ["restore_scope"],
+      "allowedValues": [0, 1],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_restore_validation_duration_seconds",
+      "type": "gauge",
+      "labels": ["restore_scope"],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_certificate_not_after_timestamp_seconds",
+      "type": "gauge",
+      "labels": ["certificate", "purpose"],
+      "maximumSeries": 100
+    },
+    {
+      "name": "codestra_node_deployment_info",
+      "type": "gauge",
+      "labels": ["application", "service", "version", "deployment", "git_sha"],
+      "allowedValues": [1],
+      "maximumSeries": 200
+    },
+    {
+      "name": "codestra_node_configuration_drift",
+      "type": "gauge",
+      "labels": ["authority", "resource"],
+      "allowedValues": [0, 1],
+      "maximumSeries": 200
+    },
+    {
+      "name": "codestra_node_security_updates_pending",
+      "type": "gauge",
+      "labels": [],
+      "maximumSeries": 1
+    },
+    {
+      "name": "codestra_node_reboot_required",
+      "type": "gauge",
+      "labels": [],
+      "allowedValues": [0, 1],
+      "maximumSeries": 1
+    },
+    {
+      "name": "codestra_node_dr_archive_last_success_timestamp_seconds",
+      "type": "gauge",
+      "labels": ["archive_scope"],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_dr_archive_integrity_ok",
+      "type": "gauge",
+      "labels": ["archive_scope"],
+      "allowedValues": [0, 1],
+      "maximumSeries": 20
+    },
+    {
+      "name": "codestra_node_textfile_contract_info",
+      "type": "gauge",
+      "labels": ["version"],
+      "allowedValues": [1],
+      "maximumSeries": 1
+    }
+  ]
+}

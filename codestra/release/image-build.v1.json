@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0.0",
+  "imageId": "node-exporter",
+  "dockerfile": "codestra/deploy/Dockerfile",
+  "context": "codestra",
+  "buildArgs": {
+    "GO_BUILDER_IMAGE": "docker.io/library/golang@sha256:98e6cffc31ccc44c7c15d83df1d69891efee8115a5bb7ede2bf30a38af3e3c92",
+    "NODE_EXPORTER_BASE_IMAGE": "docker.io/prom/node-exporter@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0"
+  },
+  "license": "Apache-2.0",
+  "description": "Private mTLS Node Exporter with a bounded native health probe for Codestra host metrics.",
+  "productionActivation": false
+}
