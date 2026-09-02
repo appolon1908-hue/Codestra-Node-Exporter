@@ -18,6 +18,7 @@ EXPECTED_RELEASE_AUTHORITY = (
     f"reusable-release-image.yml@{AUTHORITY_SHA}"
 )
 REQUIRED = (
+    ".gitattributes",
     "README.md",
     "REPOSITORY_PROFILE.md",
     "SECURITY.md",
@@ -52,6 +53,8 @@ def validate() -> None:
     missing = [relative for relative in REQUIRED if not (ROOT / relative).is_file()]
     if missing:
         fail(f"missing readiness files: {missing}")
+    if (ROOT / ".gitattributes").read_text().splitlines()[-1] != "upstream/** -whitespace":
+        fail("vendored upstream whitespace boundary is missing")
 
     manifest = load("codestra/release/image-build.v1.json")
     if manifest.get("schemaVersion") != "1.0.0":
