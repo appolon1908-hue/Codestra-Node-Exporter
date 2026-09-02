@@ -22,7 +22,9 @@ Unexpected `404`, `5xx`, plaintext/public port `9100`, unauthenticated scrape, o
 ## Collector and privacy policy
 
 - Use an explicit collector allowlist and reviewed filesystem/process exclusions.
-- Textfile metrics are limited to backup freshness, restore-validation age, certificate expiry, deployment/version identity, and configuration drift.
+- The canonical approved textfile domains are defined by `codestra/runtime.v1.json` and `codestra/textfile/metric-contract.v1.json`. This production contract must not narrow or replace those authorities.
+- Approved operational-evidence domains include backup freshness, restore-validation age, certificate expiry, deployment/version identity, configuration drift, security updates, reboot-required state, and disaster-recovery state.
+- Any new textfile domain requires an update to the canonical metric contract, bounded labels, source-controlled ownership, tests, and review before production use.
 - Textfile writers use approved ownership, restricted permissions, temporary files, atomic rename, and bounded cardinality.
 - Secret-bearing paths, customer data, command lines containing credentials, raw environment values, and high-cardinality identifiers are excluded.
 - Native metrics remain private; no public hostname route is required.
@@ -34,6 +36,7 @@ PROTECTED_PRODUCTION_SHA=PASS
 COLLECTOR_ALLOWLIST=PASS
 FILESYSTEM_EXCLUSIONS=PASS
 PROCESS_EXPOSURE_REVIEW=PASS
+CANONICAL_TEXTFILE_METRIC_CONTRACT=PASS
 TEXTFILE_OWNERSHIP=PASS
 TEXTFILE_ATOMIC_WRITES=PASS
 MTLS_SCRAPE=PASS
@@ -54,6 +57,7 @@ UNAUTHENTICATED_SCRAPE_DENIED=PASS
 PLAINTEXT_SCRAPE_DENIED=PASS
 MTLS_CLIENT_VERIFY=PASS
 COLLECTOR_ALLOWLIST=PASS
+CANONICAL_TEXTFILE_METRIC_CONTRACT=PASS
 SECRET_BEARING_METRICS=0
 HIGH_CARDINALITY_SENSITIVE_LABELS=0
 BACKUP_FRESHNESS_METRIC=PASS
@@ -61,10 +65,15 @@ RESTORE_AGE_METRIC=PASS
 CERTIFICATE_EXPIRY_METRIC=PASS
 DEPLOYMENT_IDENTITY_METRIC=PASS
 DRIFT_METRIC=PASS
+SECURITY_UPDATES_METRIC=PASS
+REBOOT_REQUIRED_METRIC=PASS
+DISASTER_RECOVERY_METRIC=PASS
 UNEXPECTED_404=0
 UNEXPECTED_5XX=0
 SOURCE_RUNTIME_DRIFT=0
 ```
+
+A missing approved metric is a certification failure; it must not be removed merely to make a narrower document pass. Metrics that are not present on a host only when genuinely inapplicable must use the canonical contract's explicit zero, unavailable, or `N/A` representation.
 
 ## Repository-first remediation
 
