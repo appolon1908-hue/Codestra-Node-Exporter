@@ -4,16 +4,15 @@ on:
   pull_request:
     paths:
       - "codestra/runtime-v1/**"
+      - "codestra/textfile/metric-contract.v1.json"
+      - "codestra/deploy/compose.candidate.yaml"
       - ".github/workflows/validate-codestra-runtime-v1.yml"
   push:
-    branches:
-      - development
-      - test
-      - staging
-      - production
-      - main
+    branches: [development, test, staging, production, main]
     paths:
       - "codestra/runtime-v1/**"
+      - "codestra/textfile/metric-contract.v1.json"
+      - "codestra/deploy/compose.candidate.yaml"
       - ".github/workflows/validate-codestra-runtime-v1.yml"
 
 permissions:
@@ -21,17 +20,24 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Check out exact source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
       - name: Install pinned YAML parser
-        run: python -m pip install --disable-pip-version-check PyYAML==6.0.2
+        run: python -m pip install --disable-pip-version-check --no-cache-dir PyYAML==6.0.3
+
       - name: Validate shell syntax
         run: bash -n codestra/runtime-v1/render_codestra_textfile_metrics.sh
-      - name: Exercise the textfile renderer
+
+      - name: Exercise the canonical textfile renderer
         shell: bash
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
           status_dir="$(mktemp -d)"
           output_dir="$(mktemp -d)"
           now="$(date +%s)"
@@ -42,62 +48,102 @@ jobs:
           printf '%s\n' "$((now + 2592000))" > "$status_dir/certificate-edge.expiry"
           printf '%s\n' "$((now + 2592000))" > "$status_dir/certificate-internal-pki.expiry"
           printf '0\n' > "$status_dir/configuration-drift.state"
+
           NODE_TEXTFILE_DIR="$output_dir" \
+          NODE_EXPORTER_GID="$(id -g)" \
           CODESTRA_STATUS_DIR="$status_dir" \
-          CODESTRA_BUSINESS="platform" \
           CODESTRA_APPLICATION="shared-platform" \
           CODESTRA_SERVICE="host" \
-          CODESTRA_ENVIRONMENT="test" \
-          CODESTRA_SERVER="ci-runner" \
-          CODESTRA_REGION="ci" \
           CODESTRA_DEPLOYMENT="exact-head" \
-          CODESTRA_VERSION="test-sha" \
+          CODESTRA_VERSION="test" \
+          CODESTRA_GIT_SHA="0000000000000000000000000000000000000000" \
           bash codestra/runtime-v1/render_codestra_textfile_metrics.sh
-          test -s "$output_dir/codestra_host.prom"
-          grep -q '^codestra_deployment_info{' "$output_dir/codestra_host.prom"
-          grep -q '^codestra_restore_validation_last_success_timestamp_seconds{' "$output_dir/codestra_host.prom"
-          grep -q '^codestra_configuration_drift{' "$output_dir/codestra_host.prom"
-          ! grep -Eqi 'customer_id|tenant_id|email|phone|request_id|trace_id' "$output_dir/codestra_host.prom"
+
+          output="$output_dir/codestra_node.prom"
+          test -s "$output"
+          test "$(stat -c '%a' "$output")" = 640
+          test "$(stat -c '%g' "$output")" = "$(id -g)"
+          grep -q '^codestra_node_deployment_info{' "$output"
+          grep -q '^codestra_node_backup_last_success_timestamp_seconds{backup_scope="database"}' "$output"
+          grep -q '^codestra_node_restore_validation_last_success_timestamp_seconds{restore_scope="isolated"}' "$output"
+          grep -q '^codestra_node_configuration_drift{authority="git",resource="managed-configuration"}' "$output"
+          ! grep -Eq '^codestra_(deployment_info|backup_last|restore_validation|certificate_expiry|configuration_drift|status_file_present)' "$output"
+
+          OUTPUT_FILE="$output" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          contract = json.loads(Path('codestra/textfile/metric-contract.v1.json').read_text())
+          allowed = {metric['name'] for metric in contract['metrics']}
+          emitted = set()
+          for line in Path(os.environ['OUTPUT_FILE']).read_text().splitlines():
+              if not line or line.startswith('#'):
+                  continue
+              emitted.add(line.split('{', 1)[0].split(' ', 1)[0])
+          unexpected = emitted - allowed
+          if unexpected:
+              raise SystemExit(f'noncanonical metrics emitted: {sorted(unexpected)}')
+          required = {
+              'codestra_node_textfile_contract_info',
+              'codestra_node_deployment_info',
+              'codestra_node_backup_last_success_timestamp_seconds',
+              'codestra_node_restore_validation_last_success_timestamp_seconds',
+              'codestra_node_certificate_not_after_timestamp_seconds',
+              'codestra_node_configuration_drift',
+          }
+          if not required <= emitted:
+              raise SystemExit(f'missing canonical metrics: {sorted(required - emitted)}')
+          PY
+
           printf '1700000000000\n' > "$status_dir/restore-validation.last_success"
           NODE_TEXTFILE_DIR="$output_dir" \
+          NODE_EXPORTER_GID="$(id -g)" \
           CODESTRA_STATUS_DIR="$status_dir" \
-          CODESTRA_BUSINESS="platform" \
           CODESTRA_APPLICATION="shared-platform" \
           CODESTRA_SERVICE="host" \
-          CODESTRA_ENVIRONMENT="test" \
-          CODESTRA_SERVER="ci-runner" \
-          CODESTRA_REGION="ci" \
           CODESTRA_DEPLOYMENT="exact-head" \
-          CODESTRA_VERSION="test-sha" \
+          CODESTRA_VERSION="test" \
+          CODESTRA_GIT_SHA="0000000000000000000000000000000000000000" \
           bash codestra/runtime-v1/render_codestra_textfile_metrics.sh
-          ! grep -q '^codestra_restore_validation_last_success_timestamp_seconds{' "$output_dir/codestra_host.prom"
-          grep -q '^codestra_status_file_present{class="restore-validation"} 0$' "$output_dir/codestra_host.prom"
-      - name: Validate Compose and security contract
+          ! grep -q '^codestra_node_restore_validation_last_success_timestamp_seconds{' "$output"
+
+      - name: Validate the single canonical mTLS runtime
         shell: python
         run: |
           from pathlib import Path
           import yaml
 
-          text = Path("codestra/runtime-v1/compose.yaml").read_text()
+          legacy = Path('codestra/runtime-v1/compose.yaml')
+          assert not legacy.exists(), 'unauthenticated alternate Compose authority must be removed'
+
+          candidate = Path('codestra/deploy/compose.candidate.yaml')
+          text = candidate.read_text(encoding='utf-8')
           compose = yaml.safe_load(text)
-          service = compose["services"]["node-exporter"]
-          assert "ports" not in service
-          assert service["read_only"] is True
-          assert "ALL" in service["cap_drop"]
-          mounts = "\n".join(service["volumes"])
-          assert "/proc:/host/proc:ro" in mounts
-          assert "/sys:/host/sys:ro" in mounts
-          assert "/:/rootfs:ro,rslave" in mounts
-          assert "/run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro" in mounts
-          assert "--collector.textfile.directory=" in "\n".join(service["command"])
-          assert "latest" not in text.lower()
-          print("Codestra Node Exporter runtime validation PASS")
-      - name: Render Compose with non-secret CI values
-        env:
-          NODE_EXPORTER_IMAGE: prom/node-exporter:ci@sha256:0000000000000000000000000000000000000000000000000000000000000000
-          NODE_TEXTFILE_DIR: /tmp/codestra-node-exporter-textfile
-        run: |
-          mkdir -p "$NODE_TEXTFILE_DIR"
-          docker compose -f codestra/runtime-v1/compose.yaml config >/tmp/codestra-node-exporter-runtime.yaml
-          test -s /tmp/codestra-node-exporter-runtime.yaml
-          ! grep -Eq ':latest([[:space:]]|$)|published:|host_ip:' /tmp/codestra-node-exporter-runtime.yaml
+          service = compose['services']['node-exporter']
+          command = set(service['command'])
+          assert '--web.config.file=/etc/node_exporter/web.yml' in command
+          assert service['user'] == '10001:10001'
+          assert service['read_only'] is True
+          assert 'ports' not in service
+          assert service.get('pid') != 'host'
+          assert service.get('network_mode') != 'host'
+          assert service.get('privileged') is not True
+          assert set(service['secrets']) == {
+              'node_exporter_server_cert',
+              'node_exporter_server_key',
+              'prometheus_client_ca',
+          }
+          assert 'ALL' in service['cap_drop']
+          textfile_mounts = [
+              mount for mount in service['volumes']
+              if isinstance(mount, dict)
+              and mount.get('target') == '/var/lib/node_exporter/textfile_collector'
+          ]
+          assert len(textfile_mounts) == 1
+          assert textfile_mounts[0]['read_only'] is True
+          assert ':latest' not in text
+          print('CODESTRA_NODE_EXPORTER_CANONICAL_MTLS_RUNTIME=PASS')
+
+      - name: Check committed whitespace
+        run: git diff --check
