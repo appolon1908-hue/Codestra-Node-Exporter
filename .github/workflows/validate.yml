@@ -37,8 +37,9 @@ jobs:
         env:
           PYTHONPYCACHEPREFIX: /tmp/codestra-node-exporter-pycache
         run: |
-          python -m py_compile scripts/validate_repository_security.py tests/test_repository_security.py
+          python -m py_compile scripts/validate_repository_security.py tests/test_repository_security.py tests/test_repository_security_remote_writes.py
           python tests/test_repository_security.py
+          python tests/test_repository_security_remote_writes.py
           python scripts/validate_repository_security.py
 
       - name: Bind vendored Git tree to exact official commit
