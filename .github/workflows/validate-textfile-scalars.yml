@@ -1,0 +1,34 @@
+name: Validate Node Exporter textfile scalar inputs
+
+on:
+  pull_request:
+  push:
+    branches: [development, test, staging, production, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scalar-inputs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate merge-result renderer
+        run: |
+          bash -n codestra/runtime-v1/render_codestra_textfile_metrics.sh
+          python3 tests/test_textfile_scalar_inputs.py
+      - name: Validate exact pull-request source
+        if: github.event_name == 'pull_request'
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git checkout --detach "$SOURCE_SHA"
+          bash -n codestra/runtime-v1/render_codestra_textfile_metrics.sh
+          python3 tests/test_textfile_scalar_inputs.py
