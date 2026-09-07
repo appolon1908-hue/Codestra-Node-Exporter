@@ -35,9 +35,16 @@ is_epoch() {
 }
 
 read_scalar() {
-  local file=$1 value
-  [[ -f ${file} && ! -L ${file} ]] || return 1
-  IFS= read -r value < "${file}" || true
+  local file=$1 value="" bytes LC_ALL=C
+  [[ -f ${file} && ! -L ${file} && -r ${file} ]] || return 1
+  bytes=$(stat -c '%s' -- "${file}") || return 1
+  [[ ${bytes} =~ ^[0-9]+$ ]] && (( bytes > 0 && bytes <= 32 )) || return 1
+  # Read the complete bounded file. Bash drops NUL bytes; the byte-count check
+  # rejects them rather than silently turning corrupt input into valid evidence.
+  IFS= read -r -N 33 value < "${file}" || true
+  (( ${#value} == bytes )) || return 1
+  value=${value%$'\n'}
+  [[ ${value} =~ ^[0-9]+$ ]] || return 1
   printf '%s' "${value}"
 }
 
