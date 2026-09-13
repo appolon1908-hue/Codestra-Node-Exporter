@@ -8,17 +8,19 @@
     9100
   ],
   "inputs": [
-    "host:/proc",
-    "host:/sys"
+    "host:/proc (read-only /host/proc)",
+    "host:/sys (read-only /host/sys)",
+    "host:/ (read-only /host/root with rslave propagation)",
+    "operator:textfile-directory (read-only)"
   ],
   "outputs": [
-    "alloy:metrics"
+    "prometheus:metrics (mTLS scrape on 9100)"
   ],
   "controls": [
-    "read-only host mounts only",
+    "host root is mounted read-only for filesystem and udev statistics; this is host filesystem access",
+    "host PID and network namespaces remain disabled in codestra/deploy/compose.candidate.yaml",
     "textfile collector directory is operator-controlled",
-    "exclude sensitive mount points and process arguments",
-    "no public listener"
+    "Prometheus client certificate is required; Alloy collects logs separately"
   ],
   "identity": {
     "authority": "appolon1908-hue/Keycloak",
