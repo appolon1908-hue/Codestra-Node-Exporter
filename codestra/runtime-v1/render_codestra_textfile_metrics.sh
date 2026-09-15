@@ -39,9 +39,19 @@ read_scalar() {
 }
 
 emit_timestamp() {
-  local metric=$1 class=$2 file=$3 value
+  local metric=$1 class=$2 file=$3 label_name=${4:-class} value
   if value=$(read_scalar "${file}") && is_epoch "${value}"; then
-    printf '%s{class="%s"} %s\n' "${metric}" "$(label_escape "${class}")" "${value}" >> "${TMP}"
+    printf '%s{%s="%s"} %s\n' "${metric}" "${label_name}" "$(label_escape "${class}")" "${value}" >> "${TMP}"
+    printf 'codestra_status_file_present{class="%s"} 1\n' "$(label_escape "${class}")" >> "${TMP}"
+  else
+    printf 'codestra_status_file_present{class="%s"} 0\n' "$(label_escape "${class}")" >> "${TMP}"
+  fi
+}
+
+emit_certificate_timestamp() {
+  local metric=$1 class=$2 file=$3 purpose=$4 value
+  if value=$(read_scalar "${file}") && is_epoch "${value}"; then
+    printf '%s{certificate="%s",purpose="%s"} %s\n' "${metric}" "$(label_escape "${class}")" "$(label_escape "${purpose}")" "${value}" >> "${TMP}"
     printf 'codestra_status_file_present{class="%s"} 1\n' "$(label_escape "${class}")" >> "${TMP}"
   else
     printf 'codestra_status_file_present{class="%s"} 0\n' "$(label_escape "${class}")" >> "${TMP}"
@@ -54,30 +64,30 @@ cat >> "${TMP}" <<EOF
 codestra_deployment_info{codestra_business="$(label_escape "${CODESTRA_BUSINESS}")",application="$(label_escape "${CODESTRA_APPLICATION}")",service="$(label_escape "${CODESTRA_SERVICE}")",environment="$(label_escape "${CODESTRA_ENVIRONMENT}")",server="$(label_escape "${CODESTRA_SERVER}")",region="$(label_escape "${CODESTRA_REGION}")",deployment="$(label_escape "${CODESTRA_DEPLOYMENT}")",version="$(label_escape "${CODESTRA_VERSION}")"} 1
 # HELP codestra_status_file_present Whether a controlled operational status file exists and is valid.
 # TYPE codestra_status_file_present gauge
-# HELP codestra_backup_last_success_timestamp_seconds Last successful backup timestamp by protected backup class.
-# TYPE codestra_backup_last_success_timestamp_seconds gauge
-# HELP codestra_restore_validation_last_success_timestamp_seconds Last successful restore-validation timestamp.
-# TYPE codestra_restore_validation_last_success_timestamp_seconds gauge
-# HELP codestra_certificate_expiry_timestamp_seconds Certificate expiry timestamp by bounded certificate class.
-# TYPE codestra_certificate_expiry_timestamp_seconds gauge
-# HELP codestra_configuration_drift Whether reviewed configuration differs from the deployed authority.
-# TYPE codestra_configuration_drift gauge
+# HELP codestra_node_backup_last_success_timestamp_seconds Last successful backup timestamp by protected backup scope.
+# TYPE codestra_node_backup_last_success_timestamp_seconds gauge
+# HELP codestra_node_restore_validation_last_success_timestamp_seconds Last successful restore-validation timestamp.
+# TYPE codestra_node_restore_validation_last_success_timestamp_seconds gauge
+# HELP codestra_node_certificate_not_after_timestamp_seconds Certificate expiry timestamp by bounded certificate class.
+# TYPE codestra_node_certificate_not_after_timestamp_seconds gauge
+# HELP codestra_node_configuration_drift Whether reviewed configuration differs from the deployed authority.
+# TYPE codestra_node_configuration_drift gauge
 EOF
 
-emit_timestamp codestra_backup_last_success_timestamp_seconds database "${STATUS_DIR}/backup-database.last_success"
-emit_timestamp codestra_backup_last_success_timestamp_seconds object-storage "${STATUS_DIR}/backup-object-storage.last_success"
-emit_timestamp codestra_backup_last_success_timestamp_seconds configuration "${STATUS_DIR}/backup-configuration.last_success"
-emit_timestamp codestra_restore_validation_last_success_timestamp_seconds restore-validation "${STATUS_DIR}/restore-validation.last_success"
-emit_timestamp codestra_certificate_expiry_timestamp_seconds edge-tls "${STATUS_DIR}/certificate-edge.expiry"
-emit_timestamp codestra_certificate_expiry_timestamp_seconds internal-pki "${STATUS_DIR}/certificate-internal-pki.expiry"
+emit_timestamp codestra_node_backup_last_success_timestamp_seconds database "${STATUS_DIR}/backup-database.last_success" backup_scope
+emit_timestamp codestra_node_backup_last_success_timestamp_seconds object-storage "${STATUS_DIR}/backup-object-storage.last_success" backup_scope
+emit_timestamp codestra_node_backup_last_success_timestamp_seconds configuration "${STATUS_DIR}/backup-configuration.last_success" backup_scope
+emit_timestamp codestra_node_restore_validation_last_success_timestamp_seconds restore-validation "${STATUS_DIR}/restore-validation.last_success" restore_scope
+emit_certificate_timestamp codestra_node_certificate_not_after_timestamp_seconds edge-tls "${STATUS_DIR}/certificate-edge.expiry" tls-serving
+emit_certificate_timestamp codestra_node_certificate_not_after_timestamp_seconds internal-pki "${STATUS_DIR}/certificate-internal-pki.expiry" client-auth
 
 if drift=$(read_scalar "${STATUS_DIR}/configuration-drift.state") && [[ ${drift} =~ ^[01]$ ]]; then
-  printf 'codestra_configuration_drift{class="reviewed-config"} %s\n' "${drift}" >> "${TMP}"
+  printf 'codestra_node_configuration_drift{authority="reviewed-config",resource="host-configuration"} %s\n' "${drift}" >> "${TMP}"
   printf 'codestra_status_file_present{class="configuration-drift"} 1\n' >> "${TMP}"
 else
   printf 'codestra_status_file_present{class="configuration-drift"} 0\n' >> "${TMP}"
 fi
 
-chmod 0640 "${TMP}"
+chmod 0644 "${TMP}"
 mv -f "${TMP}" "${OUTPUT}"
 trap - EXIT
