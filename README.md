@@ -40,3 +40,7 @@ Automated upstream synchronization requires the repository Actions secret `CODES
 ## Promotion and safety
 
 Promotion is `feature/* -> development -> test -> staging -> production -> main`. Merging changes source authority only and does not deploy. `DEPLOYMENT_ENABLED=NO` remains binding until the corporate suite release manifest is accepted.
+
+## Monitoring platform contract
+
+`codestra/monitoring-platform.v1.json` declares this exporter's place in the three-plane model: telemetry data plane, Middleware as the operational controller (service catalog, monitoring state, incidents), OpenBao as the only secrets authority. `scripts/validate_monitoring_platform.py` fails closed on a published or non-loopback host port, an inline credential, a credential file without an OpenBao secret reference, a business effect, or (Blackbox) any probe module that is not read-only.
