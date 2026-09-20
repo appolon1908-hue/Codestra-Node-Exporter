@@ -1,6 +1,6 @@
 # Codestra Node Exporter Authority
 
-Principal repository: `appolon1908-hue/Codestra-Node-Exporter`
+Principal repository: `ingtrader21-spec/Codestra-Node-Exporter`
 Canonical service host: `node.codestra.media`
 Canonical DNS target: `37.27.128.39`
 TTL: `600`
