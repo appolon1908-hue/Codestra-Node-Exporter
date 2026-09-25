@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "upstream_clone_url": "https://github.com/prometheus/node_exporter.git",
-  "upstream_ref": "master",
+  "upstream_ref": "9a077374d780c3cbda129a5760fb785853c79542",
   "upstream_commit": "9a077374d780c3cbda129a5760fb785853c79542",
   "import_path": "upstream",
   "synchronized_at": "2026-08-29T18:14:24.823586+00:00",
