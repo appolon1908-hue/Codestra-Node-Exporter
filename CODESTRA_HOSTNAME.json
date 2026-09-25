@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "service": "Node Exporter",
-  "repository": "appolon1908-hue/Codestra-Node-Exporter",
+  "repository": "ingtrader21-spec/Codestra-Node-Exporter",
   "canonical_hostname": "node.codestra.media",
   "dns_record": {
     "type": "A",
