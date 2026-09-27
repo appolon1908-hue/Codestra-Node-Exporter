@@ -1,0 +1,14 @@
+tls_server_config:
+  cert_file: /run/secrets/node_exporter_server_cert
+  key_file: /run/secrets/node_exporter_server_key
+  client_auth_type: RequireAndVerifyClientCert
+  client_ca_file: /run/secrets/prometheus_client_ca
+  min_version: TLS13
+
+http_server_config:
+  http2: true
+  headers:
+    Strict-Transport-Security: max-age=31536000; includeSubDomains
+    X-Content-Type-Options: nosniff
+    X-Frame-Options: deny
+    Content-Security-Policy: default-src 'none'; frame-ancestors 'none'

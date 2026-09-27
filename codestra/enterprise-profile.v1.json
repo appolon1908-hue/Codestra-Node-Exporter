@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "1.0",
+  "component": "node-exporter",
+  "role": "host-health-metrics-exporter",
+  "canonicalHostname": "node.codestra.media",
+  "exposure": "internal_private",
+  "status": "SOURCE_PREPARED_NOT_DEPLOYED",
+  "hostMetricScope": ["cpu", "memory", "swap", "filesystem", "disk_io", "network", "load", "uptime", "file_descriptors", "system_pressure", "clock"],
+  "codestraTextfileMetrics": [
+    "backup_age_seconds",
+    "restore_validation_age_seconds",
+    "certificate_expiry_seconds",
+    "deployment_info",
+    "runtime_source_drift",
+    "security_update_age_seconds",
+    "filesystem_backup_status"
+  ],
+  "requiredLabels": ["server", "environment", "region", "server_role", "deployment"],
+  "features": {
+    "textfileCollector": true,
+    "capacitySignals": true,
+    "diskAndFilesystemAlerts": true,
+    "timeSyncMonitoring": true,
+    "backupEvidenceMetrics": true,
+    "deploymentProvenanceMetrics": true,
+    "certificateExpiryMetrics": true
+  },
+  "security": {
+    "publicNativePortAllowed": false,
+    "prometheusPrivateScrapeOnly": true,
+    "textfileMetricsMustNotContainSecretsOrPii": true
+  }
+}

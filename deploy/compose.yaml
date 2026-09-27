@@ -1,0 +1,42 @@
+name: codestra-node-exporter
+
+services:
+  node-exporter:
+    image: ${NODE_EXPORTER_IMAGE_REPOSITORY:?NODE_EXPORTER_IMAGE_REPOSITORY is required}@sha256:${NODE_EXPORTER_IMAGE_DIGEST:?NODE_EXPORTER_IMAGE_DIGEST must be a 64-character lowercase hexadecimal digest}
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 15s
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=${NODE_EXPORTER_LISTEN_IP:?NODE_EXPORTER_LISTEN_IP must pass scripts/validate_runtime_environment.py}:${NODE_EXPORTER_PORT:-9100}
+      - --collector.textfile.directory=/var/lib/node_exporter/textfile_collector
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|var/lib/docker/.+|var/lib/containers/storage/.+)($|/)
+      - --web.config.file=/etc/node_exporter/web.yml
+    volumes:
+      - /:/host:ro,rslave
+      - ../codestra/web-config.yml:/etc/node_exporter/web.yml:ro
+      - ${NODE_EXPORTER_TEXTFILE_DIRECTORY:-/var/lib/node_exporter/textfile_collector}:/var/lib/node_exporter/textfile_collector:ro
+    secrets:
+      - node_exporter_server_cert
+      - node_exporter_server_key
+      - prometheus_client_ca
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+
+secrets:
+  node_exporter_server_cert:
+    external: true
+    name: ${NODE_EXPORTER_SERVER_CERT_SECRET_NAME:-node-exporter-server-cert}
+  node_exporter_server_key:
+    external: true
+    name: ${NODE_EXPORTER_SERVER_KEY_SECRET_NAME:-node-exporter-server-key}
+  prometheus_client_ca:
+    external: true
+    name: ${PROMETHEUS_CLIENT_CA_SECRET_NAME:-prometheus-client-ca}

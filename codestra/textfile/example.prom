@@ -1,0 +1,45 @@
+# HELP codestra_node_backup_last_success_timestamp_seconds Unix timestamp of the last successful backup.
+# TYPE codestra_node_backup_last_success_timestamp_seconds gauge
+codestra_node_backup_last_success_timestamp_seconds{backup_scope="host-root"} 0
+# HELP codestra_node_backup_last_attempt_timestamp_seconds Unix timestamp of the last backup attempt.
+# TYPE codestra_node_backup_last_attempt_timestamp_seconds gauge
+codestra_node_backup_last_attempt_timestamp_seconds{backup_scope="host-root"} 0
+# HELP codestra_node_backup_last_attempt_success Whether the last backup attempt succeeded.
+# TYPE codestra_node_backup_last_attempt_success gauge
+codestra_node_backup_last_attempt_success{backup_scope="host-root"} 0
+# HELP codestra_node_backup_repository_reachable Whether the approved backup repository is reachable.
+# TYPE codestra_node_backup_repository_reachable gauge
+codestra_node_backup_repository_reachable{backup_scope="host-root"} 0
+# HELP codestra_node_restore_validation_last_success_timestamp_seconds Unix timestamp of the last successful isolated restore validation.
+# TYPE codestra_node_restore_validation_last_success_timestamp_seconds gauge
+codestra_node_restore_validation_last_success_timestamp_seconds{restore_scope="host-root"} 0
+# HELP codestra_node_restore_validation_last_attempt_success Whether the last isolated restore validation succeeded.
+# TYPE codestra_node_restore_validation_last_attempt_success gauge
+codestra_node_restore_validation_last_attempt_success{restore_scope="host-root"} 0
+# HELP codestra_node_restore_validation_duration_seconds Duration of the last isolated restore validation.
+# TYPE codestra_node_restore_validation_duration_seconds gauge
+codestra_node_restore_validation_duration_seconds{restore_scope="host-root"} 0
+# HELP codestra_node_certificate_not_after_timestamp_seconds Unix timestamp when an approved host certificate expires.
+# TYPE codestra_node_certificate_not_after_timestamp_seconds gauge
+codestra_node_certificate_not_after_timestamp_seconds{certificate="node-exporter-server",purpose="observability-mtls"} 0
+# HELP codestra_node_deployment_info Current immutable deployment and source revision information.
+# TYPE codestra_node_deployment_info gauge
+codestra_node_deployment_info{application="observability",service="node-exporter",version="0.0.0-example",deployment="example-not-active",git_sha="000000000000"} 1
+# HELP codestra_node_configuration_drift Whether a bounded managed resource differs from its approved authority.
+# TYPE codestra_node_configuration_drift gauge
+codestra_node_configuration_drift{authority="git",resource="node-exporter-config"} 0
+# HELP codestra_node_security_updates_pending Number of security updates pending on the host.
+# TYPE codestra_node_security_updates_pending gauge
+codestra_node_security_updates_pending 0
+# HELP codestra_node_reboot_required Whether the host requires a reboot to finish approved maintenance.
+# TYPE codestra_node_reboot_required gauge
+codestra_node_reboot_required 0
+# HELP codestra_node_dr_archive_last_success_timestamp_seconds Unix timestamp of the last successful disaster-recovery archive.
+# TYPE codestra_node_dr_archive_last_success_timestamp_seconds gauge
+codestra_node_dr_archive_last_success_timestamp_seconds{archive_scope="host-configuration"} 0
+# HELP codestra_node_dr_archive_integrity_ok Whether the latest disaster-recovery archive passed integrity verification.
+# TYPE codestra_node_dr_archive_integrity_ok gauge
+codestra_node_dr_archive_integrity_ok{archive_scope="host-configuration"} 0
+# HELP codestra_node_textfile_contract_info Active Codestra textfile metric contract version.
+# TYPE codestra_node_textfile_contract_info gauge
+codestra_node_textfile_contract_info{version="1.0"} 1

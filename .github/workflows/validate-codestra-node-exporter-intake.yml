@@ -1,0 +1,41 @@
+name: Validate Codestra Node Exporter intake contract
+
+on:
+  pull_request:
+    paths:
+      - 'codestra/intake-monitoring.v1.json'
+      - 'scripts/validate_codestra_node_exporter_intake.py'
+      - '.github/workflows/validate-codestra-node-exporter-intake.yml'
+  push:
+    branches: [development, test, staging, production, main]
+    paths:
+      - 'codestra/intake-monitoring.v1.json'
+      - 'scripts/validate_codestra_node_exporter_intake.py'
+      - '.github/workflows/validate-codestra-node-exporter-intake.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codestra-node-exporter-intake-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact head
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+
+      - name: Compile and semantically validate intake host-evidence contract
+        env:
+          PYTHONPYCACHEPREFIX: /tmp/codestra-node-exporter-intake-pycache
+        run: |
+          python -m py_compile scripts/validate_codestra_node_exporter_intake.py
+          python scripts/validate_codestra_node_exporter_intake.py

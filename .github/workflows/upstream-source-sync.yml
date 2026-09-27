@@ -3,21 +3,24 @@ name: Codestra Upstream Source Sync
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [development]
     paths:
       - CODESTRA_UPSTREAM.json
       - .github/workflows/upstream-source-sync.yml
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   sync:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
+          ref: development
+          token: ${{ secrets.CODESTRA_AUTOMATION_TOKEN }}
       - name: Import official upstream source
         shell: bash
         run: |
@@ -64,4 +67,21 @@ jobs:
           git add -A upstream CODESTRA_UPSTREAM_LOCK.json
           git diff --cached --quiet && exit 0
           git commit -m "vendor: sync official Node Exporter upstream ${UPSTREAM_SHA}"
-          git push origin HEAD:main
+          SYNC_BRANCH="automation/upstream-node-exporter-${UPSTREAM_SHA:0:12}"
+          git fetch origin "refs/heads/${SYNC_BRANCH}:refs/remotes/origin/${SYNC_BRANCH}" || true
+          git push --force-with-lease="refs/heads/${SYNC_BRANCH}" origin "HEAD:refs/heads/${SYNC_BRANCH}"
+          existing_pr="$(gh pr list \
+            --head "${SYNC_BRANCH}" \
+            --base development \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+          if [[ -z "${existing_pr}" ]]; then
+            gh pr create \
+              --base development \
+              --head "${SYNC_BRANCH}" \
+              --title "vendor: review Node Exporter upstream ${UPSTREAM_SHA:0:12}" \
+              --body "Automated vendored-source update. Merge only after exact-source CI and review pass; normal promotion remains required."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.CODESTRA_AUTOMATION_TOKEN }}
